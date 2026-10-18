@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  puente-backend:
+    build:
+      context: ./puente-backend
+      dockerfile: Dockerfile
+    container_name: puente-backend
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - red-puente
+
+  puente-frontend:
+    build:
+      context: ./puente-frontend
+      dockerfile: Dockerfile
+    container_name: puente-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - puente-backend
+    restart: unless-stopped
+    networks:
+      - red-puente
+
+networks:
+  red-puente:
+    driver: bridge

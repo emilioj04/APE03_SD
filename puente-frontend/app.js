@@ -1,0 +1,528 @@
+const { useState, useEffect, useRef } = React;
+
+const API_BASE = window.location.port === '3000' || window.location.port === '80' || window.location.port === '5173'
+  ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+      ? 'http://localhost:8080/api/puente' 
+      : '/api/puente')
+  : 'http://localhost:8080/api/puente';
+
+function App() {
+  const [estado, setEstado] = useState({
+    direccionActual: 'NINGUNA',
+    vehiculosNorteEnPuente: 0,
+    vehiculosSurEnPuente: 0,
+    totalEnPuente: 0,
+    vehiculosEsperandoNorte: 0,
+    vehiculosEsperandoSur: 0,
+    totalEsperando: 0,
+    totalCruzados: 0,
+    colisionDetectada: false,
+    modoEquitativo: true,
+    limiteConsecutivos: 5,
+    consecutivosCruzados: 0,
+    puenteLibre: true,
+    enPuente: [],
+    colaNorte: [],
+    colaSur: [],
+    ultimosEventos: []
+  });
+
+  const [conectado, setConectado] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [velocidadCruce, setVelocidadCruce] = useState(2000);
+  const [limiteLote, setLimiteLote] = useState(5);
+  const logsContainerRef = useRef(null);
+
+  // Polling del estado del backend cada 500ms
+  useEffect(() => {
+    const fetchEstado = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/estado`);
+        if (res.ok) {
+          const data = await res.json();
+          setEstado(data);
+          setConectado(true);
+        } else {
+          setConectado(false);
+        }
+      } catch (err) {
+        setConectado(false);
+      }
+    };
+
+    fetchEstado();
+    const interval = setInterval(fetchEstado, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Lanzar simulación concurrente de 10 vehículos (5 Norte y 5 Sur)
+  const handleSimular10 = async () => {
+    setCargando(true);
+    try {
+      await fetch(`${API_BASE}/simular`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cantidadNorte: 5,
+          cantidadSur: 5,
+          tiempoCruceMinMs: velocidadCruce - 500 > 500 ? velocidadCruce - 500 : 800,
+          tiempoCruceMaxMs: velocidadCruce + 500,
+          intervaloGeneracionMs: 250
+        })
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Enviar vehículo individual
+  const handleAgregarVehiculo = async (direccion) => {
+    try {
+      await fetch(`${API_BASE}/vehiculo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          direccion: direccion,
+          tiempoCruceMs: velocidadCruce
+        })
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Reiniciar estado
+  const handleReiniciar = async () => {
+    try {
+      await fetch(`${API_BASE}/reiniciar`, { method: 'POST' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Cambiar política de equidad (anti-inanición)
+  const handleToggleEquidad = async (e) => {
+    const nuevoModo = e.target.checked;
+    try {
+      await fetch(`${API_BASE}/configurar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modoEquitativo: nuevoModo,
+          limiteConsecutivos: limiteLote
+        })
+      });
+      setEstado(prev => ({ ...prev, modoEquitativo: nuevoModo }));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCambiarLimiteLote = async (nuevoLimite) => {
+    setLimiteLote(nuevoLimite);
+    try {
+      await fetch(`${API_BASE}/configurar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modoEquitativo: estado.modoEquitativo,
+          limiteConsecutivos: nuevoLimite
+        })
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Determinar estados de semáforos
+  const semaforoNorteVerde = estado.direccionActual === 'NORTE' || estado.direccionActual === 'NINGUNA';
+  const semaforoSurVerde = estado.direccionActual === 'SUR' || estado.direccionActual === 'NINGUNA';
+
+  return (
+    <div className="app-root">
+      {/* HEADER */}
+      <header className="app-header">
+        <div className="header-container">
+          <div className="brand-wrapper">
+            <div className="brand-icon">🌉</div>
+            <div>
+              <h1 className="brand-title">SIMULADOR DE CRUCE DE PUENTE</h1>
+              <p className="brand-subtitle">
+                Sistemas Distribuidos — Ejercicio 4: Exclusión Mutua & Sincronización en Dirección Única | Emilio Jaramillo
+              </p>
+            </div>
+          </div>
+          <div className="header-badges">
+            <span className={`badge ${conectado ? 'badge-connected' : 'badge-disconnected'}`}>
+              <span className="pulse-dot"></span>
+              {conectado ? 'Backend Spring Boot Conectado' : 'Esperando Backend (localhost:8080)'}
+            </span>
+            <span className="badge badge-connected" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#38bdf8' }}>
+              🛡️ Mutex ReentrantLock (Fair)
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* MAIN CONTAINER */}
+      <main className="main-container">
+        
+        {/* KPI STATUS GRID */}
+        <section className="kpi-grid">
+          <div className="kpi-card">
+            <span className="kpi-title">Sentido de Circulación</span>
+            <div className="kpi-value">
+              {estado.direccionActual === 'NORTE' && (
+                <span className="dir-pill dir-norte">▲ NORTE</span>
+              )}
+              {estado.direccionActual === 'SUR' && (
+                <span className="dir-pill dir-sur">▼ SUR</span>
+              )}
+              {estado.direccionActual === 'NINGUNA' && (
+                <span className="dir-pill dir-ninguna">⚪ LIBRE</span>
+              )}
+            </div>
+            <span className="kpi-subtitle">
+              {estado.modoEquitativo ? `Lote: ${estado.consecutivosCruzados}/${estado.limiteConsecutivos} autos` : 'Modo Estándar (Sin límite)'}
+            </span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Vehículos en el Puente</span>
+            <div className="kpi-value" style={{ color: estado.totalEnPuente > 0 ? '#38bdf8' : '#94a3b8' }}>
+              {estado.totalEnPuente}
+              <span style={{ fontSize: '1rem', color: '#64748b' }}>cruzando</span>
+            </div>
+            <span className="kpi-subtitle">Capacidad dinámica concurrente</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Cola Espera (Hacia Norte)</span>
+            <div className="kpi-value" style={{ color: '#67e8f9' }}>
+              {estado.vehiculosEsperandoNorte}
+              <span style={{ fontSize: '1rem', color: '#64748b' }}>en espera</span>
+            </div>
+            <span className="kpi-subtitle">Hilos bloqueados en wait(condNorte)</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Cola Espera (Hacia Sur)</span>
+            <div className="kpi-value" style={{ color: '#fde047' }}>
+              {estado.vehiculosEsperandoSur}
+              <span style={{ fontSize: '1rem', color: '#64748b' }}>en espera</span>
+            </div>
+            <span className="kpi-subtitle">Hilos bloqueados en wait(condSur)</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Total Cruzados Exitosos</span>
+            <div className="kpi-value" style={{ color: '#34d399' }}>
+              {estado.totalCruzados}
+              <span style={{ fontSize: '1rem', color: '#64748b' }}>completados</span>
+            </div>
+            <span className="kpi-subtitle">Sincronización sin colisiones</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Invariante de Seguridad</span>
+            <div className="kpi-value" style={{ fontSize: '1.2rem', color: estado.colisionDetectada ? '#f87171' : '#34d399' }}>
+              {estado.colisionDetectada ? '⚠️ ¡COLISIÓN!' : '✅ 0 Colisiones'}
+            </div>
+            <span className="kpi-subtitle">!(Norte &gt; 0 &amp;&amp; Sur &gt; 0) verificado</span>
+          </div>
+        </section>
+
+        {/* BRIDGE SIMULATION ARENA */}
+        <section className="simulation-arena">
+          <div className="arena-header">
+            <div className="arena-title">
+              <span>🌉 Simulación Gráfica de Tráfico y Acceso al Puente</span>
+            </div>
+            <div className="arena-legend">
+              <div className="legend-item">
+                <span className="dot" style={{ background: '#06b6d4' }}></span>
+                <span>Sentido Norte (▲)</span>
+              </div>
+              <div className="legend-item">
+                <span className="dot" style={{ background: '#f59e0b' }}></span>
+                <span>Sentido Sur (▼)</span>
+              </div>
+              <div className="legend-item">
+                <span className="dot" style={{ background: '#22c55e' }}></span>
+                <span>Paso Habilitado</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bridge-viewport">
+            
+            {/* ACCESO SUR (Vehículos esperando para ir hacia el NORTE) */}
+            <div className="approach-zone">
+              <div className="approach-head">
+                <div className="approach-title">
+                  <span>🚗 Acceso Sur (Hacia Norte ▲)</span>
+                </div>
+                <div className="semaphore">
+                  <span className={`light light-red ${!semaforoNorteVerde ? 'active' : ''}`}></span>
+                  <span className={`light light-green ${semaforoNorteVerde ? 'active' : ''}`}></span>
+                </div>
+              </div>
+              
+              <div className="waiting-queue">
+                {(!estado.colaNorte || estado.colaNorte.length === 0) ? (
+                  <div className="empty-queue-msg">Sin vehículos en espera hacia el Norte</div>
+                ) : (
+                  estado.colaNorte.map((vehiculo) => (
+                    <div key={vehiculo.id} className="car-chip car-north">
+                      <span>▲ Auto #{vehiculo.id}</span>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>EN ESPERA</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* CENTRO: EL PUENTE (VÍA ÚNICA COMPARTIDA) */}
+            <div className="bridge-deck">
+              <div className="bridge-structure">
+                {/* SVG Cables de suspensión */}
+                <svg className="suspension-cables" viewBox="0 0 600 50">
+                  <path d="M 0 5 Q 150 45 300 10 Q 450 45 600 5" />
+                  <line x1="100" y1="28" x2="100" y2="50" />
+                  <line x1="200" y1="36" x2="200" y2="50" />
+                  <line x1="300" y1="10" x2="300" y2="50" />
+                  <line x1="400" y1="36" x2="400" y2="50" />
+                  <line x1="500" y1="28" x2="500" y2="50" />
+                </svg>
+
+                {/* Calzada del puente */}
+                <div className="bridge-roadway">
+                  <div className="road-stripes"></div>
+
+                  <div className="flow-indicators">
+                    {estado.direccionActual === 'NORTE' && (
+                      <span className="flow-north">FLUIDO &gt;&gt;&gt;&gt;&gt; [NORTE]</span>
+                    )}
+                    {estado.direccionActual === 'SUR' && (
+                      <span className="flow-south">[SUR] &lt;&lt;&lt;&lt;&lt; FLUIDO</span>
+                    )}
+                    {estado.direccionActual === 'NINGUNA' && (
+                      <span style={{ color: '#94a3b8' }}>PUENTE LIBRE</span>
+                    )}
+                  </div>
+
+                  <div className="cars-in-bridge-container">
+                    {(!estado.enPuente || estado.enPuente.length === 0) ? (
+                      <div style={{ color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                        --- Puente Despejado (Exclusión mutua en reposo) ---
+                      </div>
+                    ) : (
+                      estado.enPuente.map((v) => (
+                        <div 
+                          key={v.id} 
+                          className={`bridge-car ${v.direccion === 'NORTE' ? 'car-north' : 'car-south'}`}
+                        >
+                          <span>{v.direccion === 'NORTE' ? '▲' : '▼'}</span>
+                          <span>Auto #{v.id}</span>
+                          <span style={{ fontSize: '0.72rem', background: 'rgba(0,0,0,0.3)', padding: '2px 5px', borderRadius: '4px' }}>
+                            CRUZANDO
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Río debajo del puente */}
+                <div className="water-river"></div>
+              </div>
+            </div>
+
+            {/* ACCESO NORTE (Vehículos esperando para ir hacia el SUR) */}
+            <div className="approach-zone">
+              <div className="approach-head">
+                <div className="approach-title">
+                  <span>🚙 Acceso Norte (Hacia Sur ▼)</span>
+                </div>
+                <div className="semaphore">
+                  <span className={`light light-red ${!semaforoSurVerde ? 'active' : ''}`}></span>
+                  <span className={`light light-green ${semaforoSurVerde ? 'active' : ''}`}></span>
+                </div>
+              </div>
+
+              <div className="waiting-queue">
+                {(!estado.colaSur || estado.colaSur.length === 0) ? (
+                  <div className="empty-queue-msg">Sin vehículos en espera hacia el Sur</div>
+                ) : (
+                  estado.colaSur.map((vehiculo) => (
+                    <div key={vehiculo.id} className="car-chip car-south">
+                      <span>▼ Auto #{vehiculo.id}</span>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>EN ESPERA</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        {/* PANEL DE CONTROL INTERACTIVO */}
+        <section className="control-panel">
+          <div className="control-buttons-row">
+            <button 
+              className="btn btn-primary" 
+              onClick={handleSimular10}
+              disabled={cargando}
+            >
+              🚀 Simular 10 Vehículos Simultáneos (5 Norte / 5 Sur)
+            </button>
+
+            <button 
+              className="btn btn-north"
+              onClick={() => handleAgregarVehiculo('NORTE')}
+            >
+              ▲ Enviar Vehículo al Norte
+            </button>
+
+            <button 
+              className="btn btn-south"
+              onClick={() => handleAgregarVehiculo('SUR')}
+            >
+              ▼ Enviar Vehículo al Sur
+            </button>
+
+            <button 
+              className="btn btn-reset"
+              onClick={handleReiniciar}
+            >
+              🔄 Reiniciar Simulación
+            </button>
+          </div>
+
+          <div className="settings-bar">
+            {/* Reto Anti-Inanición */}
+            <label className="toggle-wrapper">
+              <input 
+                type="checkbox" 
+                className="toggle-input" 
+                checked={estado.modoEquitativo}
+                onChange={handleToggleEquidad}
+              />
+              <span style={{ fontWeight: 600, color: estado.modoEquitativo ? '#34d399' : '#cbd5e1' }}>
+                🛡️ Modo Equitativo Anti-Inanición (Reto de Prevención de Monopolio)
+              </span>
+            </label>
+
+            {estado.modoEquitativo && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>Límite consecutivo por sentido:</span>
+                <select 
+                  value={limiteLote} 
+                  onChange={(e) => handleCambiarLimiteLote(Number(e.target.value))}
+                  style={{
+                    background: '#1e293b',
+                    color: '#fff',
+                    border: '1px solid #475569',
+                    borderRadius: '6px',
+                    padding: '3px 8px'
+                  }}
+                >
+                  <option value={3}>3 vehículos</option>
+                  <option value={5}>5 vehículos</option>
+                  <option value={8}>8 vehículos</option>
+                </select>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+              <span>Velocidad de Cruce:</span>
+              <select 
+                value={velocidadCruce} 
+                onChange={(e) => setVelocidadCruce(Number(e.target.value))}
+                style={{
+                  background: '#1e293b',
+                  color: '#fff',
+                  border: '1px solid #475569',
+                  borderRadius: '6px',
+                  padding: '3px 8px'
+                }}
+              >
+                <option value={1000}>Rápida (1.0s)</option>
+                <option value={2000}>Normal (2.0s)</option>
+                <option value={3500}>Lenta (3.5s)</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        {/* LOGS TERMINAL Y ANÁLISIS DE CONCURRENCIA */}
+        <section className="details-grid">
+          
+          {/* TERMINAL DE LOGS */}
+          <div className="terminal-card">
+            <div className="terminal-header">
+              <div className="terminal-title">
+                <span>🖥️ Registro de Eventos de Concurrencia y Sincronización</span>
+              </div>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {estado.ultimosEventos ? estado.ultimosEventos.length : 0} eventos
+              </span>
+            </div>
+
+            <div className="terminal-body" ref={logsContainerRef}>
+              {(!estado.ultimosEventos || estado.ultimosEventos.length === 0) ? (
+                <div style={{ color: '#64748b', fontStyle: 'italic' }}>Esperando eventos de sincronización...</div>
+              ) : (
+                estado.ultimosEventos.map((evt, idx) => (
+                  <div key={idx} className="log-row">
+                    <span className="log-time">[{evt.timestamp}]</span>
+                    <span className={`log-tag tag-${evt.tipo}`}>{evt.tipo}</span>
+                    <span className="log-message">{evt.mensaje}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* PREGUNTAS DE ANÁLISIS Y TEORÍA */}
+          <div className="analysis-card">
+            <h3 className="analysis-title">
+              <span>📚 Análisis Teórico &amp; Preguntas de Control</span>
+            </h3>
+
+            <div className="accordion-item">
+              <div className="accordion-question">1. ¿Por qué el acceso debe coordinarse con un Mutex y variables de condición?</div>
+              <div className="accordion-answer">
+                El puente es un recurso crítico de carril único. Para evitar colisiones catastróficas, las variables de estado (dirección y contador de vehículos) deben consultarse y actualizarse de manera atómica con un mutex. Las variables de condición permiten suspender (wait) a los vehículos en sentido contrario sin consumir CPU hasta que el puente quede libre.
+              </div>
+            </div>
+
+            <div className="accordion-item">
+              <div className="accordion-question">2. ¿Qué ocurre con la inanición (starvation) si llegan vehículos continuamente?</div>
+              <div className="accordion-answer">
+                En el algoritmo básico, si entran continuamente vehículos hacia el Norte antes de que el contador llegue a cero, el sentido SUR sufre inanición indefinida. La solución implementada es la <strong>política equitativa</strong> que limita a <em>N</em> autos consecutivos cuando hay espera en sentido opuesto.
+              </div>
+            </div>
+
+            <div className="accordion-item">
+              <div className="accordion-question">3. ¿Cómo se cumple el criterio de verificación del docente?</div>
+              <div className="accordion-answer">
+                Criterio: <em>"Comprobar que nunca crucen vehículos en sentidos opuestos simultáneamente"</em>. El sistema verifica activamente en cada ciclo que la condición <code>!(norte &gt; 0 &amp;&amp; sur &gt; 0)</code> nunca sea violada, garantizando 0 colisiones en todas las pruebas concurrentes.
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+      </main>
+    </div>
+  );
+}
+
+// Renderizar la aplicación React
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
