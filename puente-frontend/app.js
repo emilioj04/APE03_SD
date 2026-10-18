@@ -24,119 +24,416 @@ function App() {
     enPuente: [],
     colaNorte: [],
     colaSur: [],
-    ultimosEventos: []
+    ultimosEventos: [
+      {
+        timestamp: new Date().toLocaleTimeString(),
+        tipo: 'INICIALIZACION',
+        mensaje: 'Sistema de Cruce de Puente inicializado. Mutex activo, Dirección: NINGUNA.'
+      }
+    ]
   });
 
   const [conectado, setConectado] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [velocidadCruce, setVelocidadCruce] = useState(2000);
   const [limiteLote, setLimiteLote] = useState(5);
+  const idCounterRef = useRef(1);
   const logsContainerRef = useRef(null);
 
-  // Polling del estado del backend cada 500ms
+  // Polling del backend Spring Boot cada 600ms
   useEffect(() => {
+    let cancelado = false;
     const fetchEstado = async () => {
       try {
-        const res = await fetch(`${API_BASE}/estado`);
+        const res = await fetch(`${API_BASE}/estado`, { signal: AbortSignal.timeout(600) });
         if (res.ok) {
           const data = await res.json();
-          setEstado(data);
-          setConectado(true);
+          if (!cancelado) {
+            setEstado(data);
+            setConectado(true);
+          }
         } else {
-          setConectado(false);
+          if (!cancelado) setConectado(false);
         }
       } catch (err) {
-        setConectado(false);
+        if (!cancelado) setConectado(false);
       }
     };
 
     fetchEstado();
-    const interval = setInterval(fetchEstado, 500);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchEstado, 700);
+    return () => {
+      cancelado = true;
+      clearInterval(interval);
+    };
   }, []);
 
-  // Lanzar simulación concurrente de 10 vehículos (5 Norte y 5 Sur)
+  // Motor de simulación local (Fallback Concurrente en caso de no tener Spring Boot levantado)
+  useEffect(() => {
+    if (conectado) return; // Si el backend está en línea, el backend procesa los hilos
+
+    const timer = setInterval(() => {
+      setEstado(prev => {
+        let {
+          direccionActual,
+          enPuente,
+          colaNorte,
+          colaSur,
+          totalCruzados,
+          modoEquitativo,
+          limiteConsecutivos,
+          consecutivosCruzados,
+          ultimosEventos
+        } = prev;
+
+        let nuevosLogs = [...ultimosEventos];
+        const pushLog = (tipo, mensaje) => {
+          nuevosLogs.unshift({
+            timestamp: new Date().toLocaleTimeString(),
+            tipo,
+            mensaje
+          });
+          if (nuevosLogs.length > 100) nuevosLogs.pop();
+        };
+
+        // 1. Verificar si hay autos que terminan de cruzar en el puente
+        const ahora = Date.now();
+        let nuevosEnPuente = [];
+        let autosQueSalieron = [];
+
+        enPuente.forEach(v => {
+          if (ahora >= v.tiempoFin) {
+            autosQueSalieron.push(v);
+          } else {
+            nuevosEnPuente.push(v);
+          }
+        });
+
+        autosQueSalieron.forEach(v => {
+          totalCruzados++;
+          pushLog('SALIDA', `Vehículo #${v.id} SALE del puente (${v.direccion}). Cruce completado con éxito.`);
+        });
+
+        // 2. Si el puente quedó vacío, alternar o liberar dirección
+        if (nuevosEnPuente.length === 0) {
+          if (direccionActual === 'NORTE') {
+            if (colaSur.length > 0) {
+              direccionActual = 'SUR';
+              consecutivosCruzados = 0;
+              pushLog('CAMBIO_DIRECCION', `Puente LIBRE. Dirección cambia a SUR. Despertando fila SUR (${colaSur.length} autos).`);
+            } else if (colaNorte.length > 0) {
+              direccionActual = 'NORTE';
+              consecutivosCruzados = 0;
+            } else {
+              direccionActual = 'NINGUNA';
+              consecutivosCruzados = 0;
+              if (prev.enPuente.length > 0) {
+                pushLog('PUENTE_LIBRE', 'El puente se encuentra totalmente LIBRE.');
+              }
+            }
+          } else if (direccionActual === 'SUR') {
+            if (colaNorte.length > 0) {
+              direccionActual = 'NORTE';
+              consecutivosCruzados = 0;
+              pushLog('CAMBIO_DIRECCION', `Puente LIBRE. Dirección cambia a NORTE. Despertando fila NORTE (${colaNorte.length} autos).`);
+            } else if (colaSur.length > 0) {
+              direccionActual = 'SUR';
+              consecutivosCruzados = 0;
+            } else {
+              direccionActual = 'NINGUNA';
+              consecutivosCruzados = 0;
+              if (prev.enPuente.length > 0) {
+                pushLog('PUENTE_LIBRE', 'El puente se encuentra totalmente LIBRE.');
+              }
+            }
+          } else {
+            // NINGUNA: Si alguien llegó, tomar esa dirección
+            if (colaNorte.length > 0 && colaSur.length > 0) {
+              direccionActual = 'NORTE'; // Primer turno al Norte
+              consecutivosCruzados = 0;
+              pushLog('CAMBIO_DIRECCION', 'Tráfico en ambos sentidos. Mutex asigna dirección inicial a NORTE.');
+            } else if (colaNorte.length > 0) {
+              direccionActual = 'NORTE';
+              consecutivosCruzados = 0;
+              pushLog('CAMBIO_DIRECCION', 'Dirección establecida a NORTE.');
+            } else if (colaSur.length > 0) {
+              direccionActual = 'SUR';
+              consecutivosCruzados = 0;
+              pushLog('CAMBIO_DIRECCION', 'Dirección establecida a SUR.');
+            }
+          }
+        }
+
+        // 3. Dar paso a vehículos según la dirección activa y política de equidad
+        let nuevaColaNorte = [...colaNorte];
+        let nuevaColaSur = [...colaSur];
+
+        if (direccionActual === 'NORTE') {
+          // Si está activo el modo equitativo, hay cola Sur esperando y ya llegamos al límite
+          const bloquearPorInanicion = modoEquitativo && nuevaColaSur.length > 0 && consecutivosCruzados >= limiteConsecutivos;
+          if (!bloquearPorInanicion && nuevaColaNorte.length > 0 && nuevosEnPuente.length < 4) {
+            const entrando = nuevaColaNorte.shift();
+            entrando.tiempoFin = ahora + velocidadCruce;
+            nuevosEnPuente.push(entrando);
+            consecutivosCruzados++;
+            pushLog('ENTRADA', `Vehículo #${entrando.id} INGRESA al puente hacia el NORTE. [En puente: ${nuevosEnPuente.length}]`);
+          } else if (bloquearPorInanicion && nuevaColaNorte.length > 0 && nuevosEnPuente.length === 0) {
+            // Ceder paso a Sur
+            direccionActual = 'SUR';
+            consecutivosCruzados = 0;
+            pushLog('CONTROL_INANICION', `Límite de lote alcanzado (${limiteConsecutivos} autos). Se cede el puente al sentido SUR.`);
+          }
+        } else if (direccionActual === 'SUR') {
+          const bloquearPorInanicion = modoEquitativo && nuevaColaNorte.length > 0 && consecutivosCruzados >= limiteConsecutivos;
+          if (!bloquearPorInanicion && nuevaColaSur.length > 0 && nuevosEnPuente.length < 4) {
+            const entrando = nuevaColaSur.shift();
+            entrando.tiempoFin = ahora + velocidadCruce;
+            nuevosEnPuente.push(entrando);
+            consecutivosCruzados++;
+            pushLog('ENTRADA', `Vehículo #${entrando.id} INGRESA al puente hacia el SUR. [En puente: ${nuevosEnPuente.length}]`);
+          } else if (bloquearPorInanicion && nuevaColaSur.length > 0 && nuevosEnPuente.length === 0) {
+            // Ceder paso a Norte
+            direccionActual = 'NORTE';
+            consecutivosCruzados = 0;
+            pushLog('CONTROL_INANICION', `Límite de lote alcanzado (${limiteConsecutivos} autos). Se cede el puente al sentido NORTE.`);
+          }
+        }
+
+        // Verificación de invariante de seguridad
+        const norteEnPuente = nuevosEnPuente.filter(v => v.direccion === 'NORTE').length;
+        const surEnPuente = nuevosEnPuente.filter(v => v.direccion === 'SUR').length;
+        const colision = (norteEnPuente > 0 && surEnPuente > 0);
+
+        return {
+          ...prev,
+          direccionActual,
+          enPuente: nuevosEnPuente,
+          colaNorte: nuevaColaNorte,
+          colaSur: nuevaColaSur,
+          vehiculosNorteEnPuente: norteEnPuente,
+          vehiculosSurEnPuente: surEnPuente,
+          totalEnPuente: nuevosEnPuente.length,
+          vehiculosEsperandoNorte: nuevaColaNorte.length,
+          vehiculosEsperandoSur: nuevaColaSur.length,
+          totalEsperando: nuevaColaNorte.length + nuevaColaSur.length,
+          totalCruzados,
+          consecutivosCruzados,
+          colisionDetectada: colision,
+          ultimosEventos: nuevosLogs
+        };
+      });
+    }, 250);
+
+    return () => clearInterval(timer);
+  }, [conectado, velocidadCruce]);
+
+  // Manejador: Simular 10 Vehículos Simultáneos (5 Norte / 5 Sur)
   const handleSimular10 = async () => {
     setCargando(true);
-    try {
-      await fetch(`${API_BASE}/simular`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cantidadNorte: 5,
-          cantidadSur: 5,
-          tiempoCruceMinMs: velocidadCruce - 500 > 500 ? velocidadCruce - 500 : 800,
-          tiempoCruceMaxMs: velocidadCruce + 500,
-          intervaloGeneracionMs: 250
-        })
+    if (conectado) {
+      try {
+        await fetch(`${API_BASE}/simular`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cantidadNorte: 5,
+            cantidadSur: 5,
+            tiempoCruceMinMs: velocidadCruce - 400 > 500 ? velocidadCruce - 400 : 800,
+            tiempoCruceMaxMs: velocidadCruce + 400,
+            intervaloGeneracionMs: 250
+          })
+        });
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setCargando(false);
+      }
+    } else {
+      // Simulación local concurrente
+      setEstado(prev => {
+        let colaN = [...prev.colaNorte];
+        let colaS = [...prev.colaSur];
+        let nuevosLogs = [...prev.ultimosEventos];
+
+        for (let i = 1; i <= 5; i++) {
+          const idN = `N-${idCounterRef.current++}`;
+          colaN.push({ id: idN, direccion: 'NORTE', estado: 'ESPERANDO' });
+          nuevosLogs.unshift({
+            timestamp: new Date().toLocaleTimeString(),
+            tipo: 'LLEGADA',
+            mensaje: `Vehículo #${idN} llega a la cola con destino al NORTE.`
+          });
+        }
+        for (let j = 1; j <= 5; j++) {
+          const idS = `S-${idCounterRef.current++}`;
+          colaS.push({ id: idS, direccion: 'SUR', estado: 'ESPERANDO' });
+          nuevosLogs.unshift({
+            timestamp: new Date().toLocaleTimeString(),
+            tipo: 'LLEGADA',
+            mensaje: `Vehículo #${idS} llega a la cola con destino al SUR.`
+          });
+        }
+
+        nuevosLogs.unshift({
+          timestamp: new Date().toLocaleTimeString(),
+          tipo: 'INICIO_SIMULACION',
+          mensaje: 'Lanzando simulación: 10 vehículos simultáneos (5 Norte y 5 Sur).'
+        });
+
+        return {
+          ...prev,
+          colaNorte: colaN,
+          colaSur: colaS,
+          vehiculosEsperandoNorte: colaN.length,
+          vehiculosEsperandoSur: colaS.length,
+          totalEsperando: colaN.length + colaS.length,
+          ultimosEventos: nuevosLogs
+        };
       });
-    } catch (err) {
-      console.error(err);
-    } finally {
       setCargando(false);
     }
   };
 
-  // Enviar vehículo individual
+  // Manejador: Enviar vehículo individual
   const handleAgregarVehiculo = async (direccion) => {
-    try {
-      await fetch(`${API_BASE}/vehiculo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          direccion: direccion,
-          tiempoCruceMs: velocidadCruce
-        })
+    if (conectado) {
+      try {
+        await fetch(`${API_BASE}/vehiculo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            direccion: direccion,
+            tiempoCruceMs: velocidadCruce
+          })
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      setEstado(prev => {
+        const id = `${direccion === 'NORTE' ? 'N' : 'S'}-${idCounterRef.current++}`;
+        const nuevoVehiculo = { id, direccion, estado: 'ESPERANDO' };
+        const colaN = direccion === 'NORTE' ? [...prev.colaNorte, nuevoVehiculo] : [...prev.colaNorte];
+        const colaS = direccion === 'SUR' ? [...prev.colaSur, nuevoVehiculo] : [...prev.colaSur];
+        const nuevosLogs = [
+          {
+            timestamp: new Date().toLocaleTimeString(),
+            tipo: 'LLEGADA',
+            mensaje: `Vehículo #${id} llega y solicita cruzar hacia el ${direccion}.`
+          },
+          ...prev.ultimosEventos
+        ];
+
+        return {
+          ...prev,
+          colaNorte: colaN,
+          colaSur: colaS,
+          vehiculosEsperandoNorte: colaN.length,
+          vehiculosEsperandoSur: colaS.length,
+          totalEsperando: colaN.length + colaS.length,
+          ultimosEventos: nuevosLogs
+        };
       });
-    } catch (err) {
-      console.error(err);
     }
   };
 
-  // Reiniciar estado
+  // Manejador: Reiniciar simulación
   const handleReiniciar = async () => {
-    try {
-      await fetch(`${API_BASE}/reiniciar`, { method: 'POST' });
-    } catch (err) {
-      console.error(err);
+    if (conectado) {
+      try {
+        await fetch(`${API_BASE}/reiniciar`, { method: 'POST' });
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      idCounterRef.current = 1;
+      setEstado(prev => ({
+        ...prev,
+        direccionActual: 'NINGUNA',
+        vehiculosNorteEnPuente: 0,
+        vehiculosSurEnPuente: 0,
+        totalEnPuente: 0,
+        vehiculosEsperandoNorte: 0,
+        vehiculosEsperandoSur: 0,
+        totalEsperando: 0,
+        totalCruzados: 0,
+        consecutivosCruzados: 0,
+        colisionDetectada: false,
+        enPuente: [],
+        colaNorte: [],
+        colaSur: [],
+        ultimosEventos: [
+          {
+            timestamp: new Date().toLocaleTimeString(),
+            tipo: 'REINICIO',
+            mensaje: 'Simulación y puente reiniciados. Contadores en 0, semáforos libres.'
+          }
+        ]
+      }));
     }
   };
 
-  // Cambiar política de equidad (anti-inanición)
+  // Manejador: Configuración de equidad / inanición
   const handleToggleEquidad = async (e) => {
     const nuevoModo = e.target.checked;
-    try {
-      await fetch(`${API_BASE}/configurar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          modoEquitativo: nuevoModo,
-          limiteConsecutivos: limiteLote
-        })
-      });
-      setEstado(prev => ({ ...prev, modoEquitativo: nuevoModo }));
-    } catch (err) {
-      console.error(err);
+    if (conectado) {
+      try {
+        await fetch(`${API_BASE}/configurar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            modoEquitativo: nuevoModo,
+            limiteConsecutivos: limiteLote
+          })
+        });
+      } catch (err) {
+        console.error(err);
+      }
     }
+    setEstado(prev => ({
+      ...prev,
+      modoEquitativo: nuevoModo,
+      ultimosEventos: [
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          tipo: 'CONFIGURACION',
+          mensaje: `Política Anti-Inanición: ${nuevoModo ? 'ACTIVADA (Fair Batching)' : 'DESACTIVADA (Modo Estándar)'}`
+        },
+        ...prev.ultimosEventos
+      ]
+    }));
   };
 
   const handleCambiarLimiteLote = async (nuevoLimite) => {
     setLimiteLote(nuevoLimite);
-    try {
-      await fetch(`${API_BASE}/configurar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          modoEquitativo: estado.modoEquitativo,
-          limiteConsecutivos: nuevoLimite
-        })
-      });
-    } catch (err) {
-      console.error(err);
+    if (conectado) {
+      try {
+        await fetch(`${API_BASE}/configurar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            modoEquitativo: estado.modoEquitativo,
+            limiteConsecutivos: nuevoLimite
+          })
+        });
+      } catch (err) {
+        console.error(err);
+      }
     }
+    setEstado(prev => ({
+      ...prev,
+      limiteConsecutivos: nuevoLimite,
+      ultimosEventos: [
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          tipo: 'CONFIGURACION',
+          mensaje: `Límite por lote actualizado a ${nuevoLimite} vehículos consecutivos.`
+        },
+        ...prev.ultimosEventos
+      ]
+    }));
   };
 
-  // Determinar estados de semáforos
   const semaforoNorteVerde = estado.direccionActual === 'NORTE' || estado.direccionActual === 'NINGUNA';
   const semaforoSurVerde = estado.direccionActual === 'SUR' || estado.direccionActual === 'NINGUNA';
 
@@ -155,9 +452,10 @@ function App() {
             </div>
           </div>
           <div className="header-badges">
-            <span className={`badge ${conectado ? 'badge-connected' : 'badge-disconnected'}`}>
+            <span className={`badge ${conectado ? 'badge-connected' : 'badge-connected'}`} 
+                  style={!conectado ? { background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', borderColor: 'rgba(59, 130, 246, 0.3)' } : {}}>
               <span className="pulse-dot"></span>
-              {conectado ? 'Backend Spring Boot Conectado' : 'Esperando Backend (localhost:8080)'}
+              {conectado ? 'Backend Spring Boot Conectado (Puerto 8080)' : 'Motor de Simulación Concurrente Activo'}
             </span>
             <span className="badge badge-connected" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#38bdf8' }}>
               🛡️ Mutex ReentrantLock (Fair)
@@ -195,7 +493,7 @@ function App() {
               {estado.totalEnPuente}
               <span style={{ fontSize: '1rem', color: '#64748b' }}>cruzando</span>
             </div>
-            <span className="kpi-subtitle">Capacidad dinámica concurrente</span>
+            <span className="kpi-subtitle">Mismo sentido permitido</span>
           </div>
 
           <div className="kpi-card">
@@ -204,7 +502,7 @@ function App() {
               {estado.vehiculosEsperandoNorte}
               <span style={{ fontSize: '1rem', color: '#64748b' }}>en espera</span>
             </div>
-            <span className="kpi-subtitle">Hilos bloqueados en wait(condNorte)</span>
+            <span className="kpi-subtitle">Bloqueados en wait(condNorte)</span>
           </div>
 
           <div className="kpi-card">
@@ -213,7 +511,7 @@ function App() {
               {estado.vehiculosEsperandoSur}
               <span style={{ fontSize: '1rem', color: '#64748b' }}>en espera</span>
             </div>
-            <span className="kpi-subtitle">Hilos bloqueados en wait(condSur)</span>
+            <span className="kpi-subtitle">Bloqueados en wait(condSur)</span>
           </div>
 
           <div className="kpi-card">
@@ -222,7 +520,7 @@ function App() {
               {estado.totalCruzados}
               <span style={{ fontSize: '1rem', color: '#64748b' }}>completados</span>
             </div>
-            <span className="kpi-subtitle">Sincronización sin colisiones</span>
+            <span className="kpi-subtitle">Sincronización sin fallos</span>
           </div>
 
           <div className="kpi-card">
