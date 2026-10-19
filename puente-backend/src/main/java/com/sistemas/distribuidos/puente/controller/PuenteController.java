@@ -11,9 +11,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
-/**
- * Controlador REST que expone los servicios de sincronización del puente.
- */
 @RestController
 @RequestMapping("/api/puente")
 @CrossOrigin(origins = "*")
@@ -25,17 +22,11 @@ public class PuenteController {
         this.puenteService = puenteService;
     }
 
-    /**
-     * Consulta el estado en tiempo real del puente.
-     */
     @GetMapping("/estado")
     public ResponseEntity<EstadoPuenteDto> obtenerEstado() {
         return ResponseEntity.ok(puenteService.obtenerEstado());
     }
 
-    /**
-     * Inicia una simulación masiva concurrente (ej. 5 Norte y 5 Sur).
-     */
     @PostMapping("/simular")
     public ResponseEntity<Map<String, Object>> simular(@RequestBody(required = false) SimulacionRequest request) {
         if (request == null) {
@@ -43,42 +34,30 @@ public class PuenteController {
         }
         puenteService.iniciarSimulacion(request);
         return ResponseEntity.ok(Map.of(
-                "mensaje", "Simulación concurrente iniciada con éxito",
+                "mensaje", "Simulacion iniciada con exito",
                 "cantidadNorte", request.getCantidadNorte(),
                 "cantidadSur", request.getCantidadSur()
         ));
     }
 
-    /**
-     * Encola un vehículo individual en una dirección específica.
-     */
     @PostMapping("/vehiculo")
     public ResponseEntity<Vehiculo> encolarVehiculo(@RequestBody VehiculoRequest request) {
         Vehiculo vehiculo = puenteService.encolarVehiculo(request);
         return ResponseEntity.ok(vehiculo);
     }
 
-    /**
-     * Reinicia el estado del puente.
-     */
     @PostMapping("/reiniciar")
     public ResponseEntity<Map<String, String>> reiniciar() {
         puenteService.reiniciar();
-        return ResponseEntity.ok(Map.of("mensaje", "Simulación y puente reiniciados"));
+        return ResponseEntity.ok(Map.of("mensaje", "Simulacion y puente reiniciados"));
     }
 
-    /**
-     * Actualiza la política de equidad o anti-monopolio (inanición).
-     */
     @PostMapping("/configurar")
     public ResponseEntity<Map<String, String>> configurar(@RequestBody ConfiguracionRequest request) {
         puenteService.configurar(request);
-        return ResponseEntity.ok(Map.of("mensaje", "Configuración actualizada"));
+        return ResponseEntity.ok(Map.of("mensaje", "Configuracion actualizada"));
     }
 
-    /**
-     * Endpoint de salud del servicio.
-     */
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
         return ResponseEntity.ok(Map.of(

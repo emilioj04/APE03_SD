@@ -2,9 +2,6 @@ package com.sistemas.distribuidos.puente.model;
 
 import java.time.LocalDateTime;
 
-/**
- * Representa la entidad vehículo simulada por un hilo concurrente.
- */
 public class Vehiculo {
     private String id;
     private Direccion direccion;

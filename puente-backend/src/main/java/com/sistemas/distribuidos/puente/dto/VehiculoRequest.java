@@ -2,12 +2,9 @@ package com.sistemas.distribuidos.puente.dto;
 
 import com.sistemas.distribuidos.puente.model.Direccion;
 
-/**
- * Petición para enviar un vehículo individual al puente.
- */
 public class VehiculoRequest {
     private String id;
-    private Direccion direccion; // NORTE o SUR
+    private Direccion direccion;
     private long tiempoCruceMs = 2000;
 
     public VehiculoRequest() {

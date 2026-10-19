@@ -41,7 +41,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Header */
 .app-header {
   background: var(--bg-header);
   border-bottom: 1px solid var(--bg-card-border);
@@ -137,7 +136,6 @@ body {
   100% { transform: scale(0.9); opacity: 0.8; }
 }
 
-/* Layout */
 .main-container {
   max-width: 1400px;
   margin: 1.5rem auto 3rem;
@@ -147,7 +145,6 @@ body {
   gap: 1.5rem;
 }
 
-/* KPI Status Grid */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -224,7 +221,6 @@ body {
   box-shadow: 0 0 15px rgba(245, 158, 11, 0.25);
 }
 
-/* Bridge Simulation Arena */
 .simulation-arena {
   background: var(--bg-card);
   border: 1px solid var(--bg-card-border);
@@ -271,7 +267,6 @@ body {
   border-radius: 50%;
 }
 
-/* The Graphic Bridge Canvas */
 .bridge-viewport {
   background: linear-gradient(180deg, #090e17 0%, #0d1b2a 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -292,7 +287,6 @@ body {
   }
 }
 
-/* Approach Sides */
 .approach-zone {
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -317,7 +311,6 @@ body {
   gap: 0.4rem;
 }
 
-/* Traffic Semaphores */
 .semaphore {
   background: #111;
   border: 2px solid #222;
@@ -346,7 +339,6 @@ body {
   box-shadow: 0 0 12px var(--traffic-green);
 }
 
-/* Waiting Queues */
 .waiting-queue {
   min-height: 110px;
   background: rgba(0, 0, 0, 0.35);
@@ -368,7 +360,6 @@ body {
   font-style: italic;
 }
 
-/* Car items */
 .car-chip {
   padding: 0.4rem 0.65rem;
   border-radius: 6px;
@@ -397,7 +388,6 @@ body {
   to { opacity: 1; transform: scale(1); }
 }
 
-/* Center Bridge Deck */
 .bridge-deck {
   position: relative;
   display: flex;
@@ -525,7 +515,6 @@ body {
   100% { background-position: 200% 50%; }
 }
 
-/* Control Action Bar */
 .control-panel {
   background: var(--bg-card);
   border: 1px solid var(--bg-card-border);
@@ -602,7 +591,6 @@ body {
   background: rgba(244, 63, 94, 0.25);
 }
 
-/* Settings and Starvation Options */
 .settings-bar {
   display: flex;
   flex-wrap: wrap;
@@ -653,7 +641,6 @@ body {
   transform: translateX(20px);
 }
 
-/* Logs and Theoretical Content Grid */
 .details-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -666,7 +653,6 @@ body {
   }
 }
 
-/* Console Logs */
 .terminal-card {
   background: #070d17;
   border: 1px solid var(--bg-card-border);
@@ -738,7 +724,6 @@ body {
   color: #e2e8f0;
 }
 
-/* Theoretical and Analysis Card */
 .analysis-card {
   background: var(--bg-card);
   border: 1px solid var(--bg-card-border);

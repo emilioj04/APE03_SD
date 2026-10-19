@@ -6,9 +6,6 @@ import com.sistemas.distribuidos.puente.model.Vehiculo;
 
 import java.util.List;
 
-/**
- * DTO que representa el estado completo del puente y sus métricas.
- */
 public class EstadoPuenteDto {
     private Direccion direccionActual;
     private int vehiculosNorteEnPuente;

@@ -28,7 +28,7 @@ function App() {
       {
         timestamp: new Date().toLocaleTimeString(),
         tipo: 'INICIALIZACION',
-        mensaje: 'Sistema de Cruce de Puente inicializado. Mutex activo, Dirección: NINGUNA.'
+        mensaje: 'Sistema de Cruce de Puente inicializado. Mutex activo, Direccion: NINGUNA.'
       }
     ]
   });
@@ -40,7 +40,6 @@ function App() {
   const idCounterRef = useRef(1);
   const logsContainerRef = useRef(null);
 
-  // Polling del backend Spring Boot cada 600ms
   useEffect(() => {
     let cancelado = false;
     const fetchEstado = async () => {
@@ -68,9 +67,8 @@ function App() {
     };
   }, []);
 
-  // Motor de simulación local (Fallback Concurrente en caso de no tener Spring Boot levantado)
   useEffect(() => {
-    if (conectado) return; // Si el backend está en línea, el backend procesa los hilos
+    if (conectado) return;
 
     const timer = setInterval(() => {
       setEstado(prev => {
@@ -96,7 +94,6 @@ function App() {
           if (nuevosLogs.length > 100) nuevosLogs.pop();
         };
 
-        // 1. Verificar si hay autos que terminan de cruzar en el puente
         const ahora = Date.now();
         let nuevosEnPuente = [];
         let autosQueSalieron = [];
@@ -111,16 +108,15 @@ function App() {
 
         autosQueSalieron.forEach(v => {
           totalCruzados++;
-          pushLog('SALIDA', `Vehículo #${v.id} SALE del puente (${v.direccion}). Cruce completado con éxito.`);
+          pushLog('SALIDA', `Vehiculo #${v.id} SALE del puente (${v.direccion}). Cruce completado con exito.`);
         });
 
-        // 2. Si el puente quedó vacío, alternar o liberar dirección
         if (nuevosEnPuente.length === 0) {
           if (direccionActual === 'NORTE') {
             if (colaSur.length > 0) {
               direccionActual = 'SUR';
               consecutivosCruzados = 0;
-              pushLog('CAMBIO_DIRECCION', `Puente LIBRE. Dirección cambia a SUR. Despertando fila SUR (${colaSur.length} autos).`);
+              pushLog('CAMBIO_DIRECCION', `Puente LIBRE. Direccion cambia a SUR. Despertando fila SUR (${colaSur.length} autos).`);
             } else if (colaNorte.length > 0) {
               direccionActual = 'NORTE';
               consecutivosCruzados = 0;
@@ -135,7 +131,7 @@ function App() {
             if (colaNorte.length > 0) {
               direccionActual = 'NORTE';
               consecutivosCruzados = 0;
-              pushLog('CAMBIO_DIRECCION', `Puente LIBRE. Dirección cambia a NORTE. Despertando fila NORTE (${colaNorte.length} autos).`);
+              pushLog('CAMBIO_DIRECCION', `Puente LIBRE. Direccion cambia a NORTE. Despertando fila NORTE (${colaNorte.length} autos).`);
             } else if (colaSur.length > 0) {
               direccionActual = 'SUR';
               consecutivosCruzados = 0;
@@ -147,41 +143,37 @@ function App() {
               }
             }
           } else {
-            // NINGUNA: Si alguien llegó, tomar esa dirección
             if (colaNorte.length > 0 && colaSur.length > 0) {
-              direccionActual = 'NORTE'; // Primer turno al Norte
+              direccionActual = 'NORTE';
               consecutivosCruzados = 0;
-              pushLog('CAMBIO_DIRECCION', 'Tráfico en ambos sentidos. Mutex asigna dirección inicial a NORTE.');
+              pushLog('CAMBIO_DIRECCION', 'Trafico en ambos sentidos. Mutex asigna direccion inicial a NORTE.');
             } else if (colaNorte.length > 0) {
               direccionActual = 'NORTE';
               consecutivosCruzados = 0;
-              pushLog('CAMBIO_DIRECCION', 'Dirección establecida a NORTE.');
+              pushLog('CAMBIO_DIRECCION', 'Direccion establecida a NORTE.');
             } else if (colaSur.length > 0) {
               direccionActual = 'SUR';
               consecutivosCruzados = 0;
-              pushLog('CAMBIO_DIRECCION', 'Dirección establecida a SUR.');
+              pushLog('CAMBIO_DIRECCION', 'Direccion establecida a SUR.');
             }
           }
         }
 
-        // 3. Dar paso a vehículos según la dirección activa y política de equidad
         let nuevaColaNorte = [...colaNorte];
         let nuevaColaSur = [...colaSur];
 
         if (direccionActual === 'NORTE') {
-          // Si está activo el modo equitativo, hay cola Sur esperando y ya llegamos al límite
           const bloquearPorInanicion = modoEquitativo && nuevaColaSur.length > 0 && consecutivosCruzados >= limiteConsecutivos;
           if (!bloquearPorInanicion && nuevaColaNorte.length > 0 && nuevosEnPuente.length < 4) {
             const entrando = nuevaColaNorte.shift();
             entrando.tiempoFin = ahora + velocidadCruce;
             nuevosEnPuente.push(entrando);
             consecutivosCruzados++;
-            pushLog('ENTRADA', `Vehículo #${entrando.id} INGRESA al puente hacia el NORTE. [En puente: ${nuevosEnPuente.length}]`);
+            pushLog('ENTRADA', `Vehiculo #${entrando.id} INGRESA al puente hacia el NORTE. [En puente: ${nuevosEnPuente.length}]`);
           } else if (bloquearPorInanicion && nuevaColaNorte.length > 0 && nuevosEnPuente.length === 0) {
-            // Ceder paso a Sur
             direccionActual = 'SUR';
             consecutivosCruzados = 0;
-            pushLog('CONTROL_INANICION', `Límite de lote alcanzado (${limiteConsecutivos} autos). Se cede el puente al sentido SUR.`);
+            pushLog('CONTROL_INANICION', `Limite de lote alcanzado (${limiteConsecutivos} autos). Se cede el puente al sentido SUR.`);
           }
         } else if (direccionActual === 'SUR') {
           const bloquearPorInanicion = modoEquitativo && nuevaColaNorte.length > 0 && consecutivosCruzados >= limiteConsecutivos;
@@ -190,16 +182,14 @@ function App() {
             entrando.tiempoFin = ahora + velocidadCruce;
             nuevosEnPuente.push(entrando);
             consecutivosCruzados++;
-            pushLog('ENTRADA', `Vehículo #${entrando.id} INGRESA al puente hacia el SUR. [En puente: ${nuevosEnPuente.length}]`);
+            pushLog('ENTRADA', `Vehiculo #${entrando.id} INGRESA al puente hacia el SUR. [En puente: ${nuevosEnPuente.length}]`);
           } else if (bloquearPorInanicion && nuevaColaSur.length > 0 && nuevosEnPuente.length === 0) {
-            // Ceder paso a Norte
             direccionActual = 'NORTE';
             consecutivosCruzados = 0;
-            pushLog('CONTROL_INANICION', `Límite de lote alcanzado (${limiteConsecutivos} autos). Se cede el puente al sentido NORTE.`);
+            pushLog('CONTROL_INANICION', `Limite de lote alcanzado (${limiteConsecutivos} autos). Se cede el puente al sentido NORTE.`);
           }
         }
 
-        // Verificación de invariante de seguridad
         const norteEnPuente = nuevosEnPuente.filter(v => v.direccion === 'NORTE').length;
         const surEnPuente = nuevosEnPuente.filter(v => v.direccion === 'SUR').length;
         const colision = (norteEnPuente > 0 && surEnPuente > 0);
@@ -227,7 +217,6 @@ function App() {
     return () => clearInterval(timer);
   }, [conectado, velocidadCruce]);
 
-  // Manejador: Simular 10 Vehículos Simultáneos (5 Norte / 5 Sur)
   const handleSimular10 = async () => {
     setCargando(true);
     if (conectado) {
@@ -249,7 +238,6 @@ function App() {
         setCargando(false);
       }
     } else {
-      // Simulación local concurrente
       setEstado(prev => {
         let colaN = [...prev.colaNorte];
         let colaS = [...prev.colaSur];
@@ -261,7 +249,7 @@ function App() {
           nuevosLogs.unshift({
             timestamp: new Date().toLocaleTimeString(),
             tipo: 'LLEGADA',
-            mensaje: `Vehículo #${idN} llega a la cola con destino al NORTE.`
+            mensaje: `Vehiculo #${idN} llega a la cola con destino al NORTE.`
           });
         }
         for (let j = 1; j <= 5; j++) {
@@ -270,14 +258,14 @@ function App() {
           nuevosLogs.unshift({
             timestamp: new Date().toLocaleTimeString(),
             tipo: 'LLEGADA',
-            mensaje: `Vehículo #${idS} llega a la cola con destino al SUR.`
+            mensaje: `Vehiculo #${idS} llega a la cola con destino al SUR.`
           });
         }
 
         nuevosLogs.unshift({
           timestamp: new Date().toLocaleTimeString(),
           tipo: 'INICIO_SIMULACION',
-          mensaje: 'Lanzando simulación: 10 vehículos simultáneos (5 Norte y 5 Sur).'
+          mensaje: 'Lanzando simulacion: 10 vehiculos simultaneos (5 Norte y 5 Sur).'
         });
 
         return {
@@ -294,7 +282,6 @@ function App() {
     }
   };
 
-  // Manejador: Enviar vehículo individual
   const handleAgregarVehiculo = async (direccion) => {
     if (conectado) {
       try {
@@ -319,7 +306,7 @@ function App() {
           {
             timestamp: new Date().toLocaleTimeString(),
             tipo: 'LLEGADA',
-            mensaje: `Vehículo #${id} llega y solicita cruzar hacia el ${direccion}.`
+            mensaje: `Vehiculo #${id} llega y solicita cruzar hacia el ${direccion}.`
           },
           ...prev.ultimosEventos
         ];
@@ -337,7 +324,6 @@ function App() {
     }
   };
 
-  // Manejador: Reiniciar simulación
   const handleReiniciar = async () => {
     if (conectado) {
       try {
@@ -366,14 +352,13 @@ function App() {
           {
             timestamp: new Date().toLocaleTimeString(),
             tipo: 'REINICIO',
-            mensaje: 'Simulación y puente reiniciados. Contadores en 0, semáforos libres.'
+            mensaje: 'Simulacion y puente reiniciados. Contadores en 0, semaforos libres.'
           }
         ]
       }));
     }
   };
 
-  // Manejador: Configuración de equidad / inanición
   const handleToggleEquidad = async (e) => {
     const nuevoModo = e.target.checked;
     if (conectado) {
@@ -397,7 +382,7 @@ function App() {
         {
           timestamp: new Date().toLocaleTimeString(),
           tipo: 'CONFIGURACION',
-          mensaje: `Política Anti-Inanición: ${nuevoModo ? 'ACTIVADA (Fair Batching)' : 'DESACTIVADA (Modo Estándar)'}`
+          mensaje: `Politica Anti-Inanicion: ${nuevoModo ? 'ACTIVADA (Fair Batching)' : 'DESACTIVADA (Modo Estandar)'}`
         },
         ...prev.ultimosEventos
       ]
@@ -427,7 +412,7 @@ function App() {
         {
           timestamp: new Date().toLocaleTimeString(),
           tipo: 'CONFIGURACION',
-          mensaje: `Límite por lote actualizado a ${nuevoLimite} vehículos consecutivos.`
+          mensaje: `Limite por lote actualizado a ${nuevoLimite} vehiculos consecutivos.`
         },
         ...prev.ultimosEventos
       ]
@@ -439,7 +424,6 @@ function App() {
 
   return (
     <div className="app-root">
-      {/* HEADER */}
       <header className="app-header">
         <div className="header-container">
           <div className="brand-wrapper">
@@ -455,7 +439,7 @@ function App() {
             <span className={`badge ${conectado ? 'badge-connected' : 'badge-connected'}`} 
                   style={!conectado ? { background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', borderColor: 'rgba(59, 130, 246, 0.3)' } : {}}>
               <span className="pulse-dot"></span>
-              {conectado ? 'Backend Spring Boot Conectado (Puerto 8080)' : 'Motor de Simulación Concurrente Activo'}
+              {conectado ? 'Backend Spring Boot Conectado (Puerto 8080)' : 'Motor de Simulacion Concurrente Activo'}
             </span>
             <span className="badge badge-connected" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#38bdf8' }}>
               🛡️ Mutex ReentrantLock (Fair)
@@ -464,10 +448,8 @@ function App() {
         </div>
       </header>
 
-      {/* MAIN CONTAINER */}
       <main className="main-container">
         
-        {/* KPI STATUS GRID */}
         <section className="kpi-grid">
           <div className="kpi-card">
             <span className="kpi-title">Sentido de Circulación</span>
@@ -483,7 +465,7 @@ function App() {
               )}
             </div>
             <span className="kpi-subtitle">
-              {estado.modoEquitativo ? `Lote: ${estado.consecutivosCruzados}/${estado.limiteConsecutivos} autos` : 'Modo Estándar (Sin límite)'}
+              {estado.modoEquitativo ? `Lote: ${estado.consecutivosCruzados}/${estado.limiteConsecutivos} autos` : 'Modo Estandar (Sin limite)'}
             </span>
           </div>
 
@@ -520,7 +502,7 @@ function App() {
               {estado.totalCruzados}
               <span style={{ fontSize: '1rem', color: '#64748b' }}>completados</span>
             </div>
-            <span className="kpi-subtitle">Sincronización sin fallos</span>
+            <span className="kpi-subtitle">Sincronizacion sin fallos</span>
           </div>
 
           <div className="kpi-card">
@@ -532,7 +514,6 @@ function App() {
           </div>
         </section>
 
-        {/* BRIDGE SIMULATION ARENA */}
         <section className="simulation-arena">
           <div className="arena-header">
             <div className="arena-title">
@@ -556,7 +537,6 @@ function App() {
 
           <div className="bridge-viewport">
             
-            {/* ACCESO SUR (Vehículos esperando para ir hacia el NORTE) */}
             <div className="approach-zone">
               <div className="approach-head">
                 <div className="approach-title">
@@ -570,7 +550,7 @@ function App() {
               
               <div className="waiting-queue">
                 {(!estado.colaNorte || estado.colaNorte.length === 0) ? (
-                  <div className="empty-queue-msg">Sin vehículos en espera hacia el Norte</div>
+                  <div className="empty-queue-msg">Sin vehiculos en espera hacia el Norte</div>
                 ) : (
                   estado.colaNorte.map((vehiculo) => (
                     <div key={vehiculo.id} className="car-chip car-north">
@@ -582,10 +562,8 @@ function App() {
               </div>
             </div>
 
-            {/* CENTRO: EL PUENTE (VÍA ÚNICA COMPARTIDA) */}
             <div className="bridge-deck">
               <div className="bridge-structure">
-                {/* SVG Cables de suspensión */}
                 <svg className="suspension-cables" viewBox="0 0 600 50">
                   <path d="M 0 5 Q 150 45 300 10 Q 450 45 600 5" />
                   <line x1="100" y1="28" x2="100" y2="50" />
@@ -595,7 +573,6 @@ function App() {
                   <line x1="500" y1="28" x2="500" y2="50" />
                 </svg>
 
-                {/* Calzada del puente */}
                 <div className="bridge-roadway">
                   <div className="road-stripes"></div>
 
@@ -614,7 +591,7 @@ function App() {
                   <div className="cars-in-bridge-container">
                     {(!estado.enPuente || estado.enPuente.length === 0) ? (
                       <div style={{ color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                        --- Puente Despejado (Exclusión mutua en reposo) ---
+                        --- Puente Despejado (Exclusion mutua en reposo) ---
                       </div>
                     ) : (
                       estado.enPuente.map((v) => (
@@ -633,12 +610,10 @@ function App() {
                   </div>
                 </div>
 
-                {/* Río debajo del puente */}
                 <div className="water-river"></div>
               </div>
             </div>
 
-            {/* ACCESO NORTE (Vehículos esperando para ir hacia el SUR) */}
             <div className="approach-zone">
               <div className="approach-head">
                 <div className="approach-title">
@@ -652,7 +627,7 @@ function App() {
 
               <div className="waiting-queue">
                 {(!estado.colaSur || estado.colaSur.length === 0) ? (
-                  <div className="empty-queue-msg">Sin vehículos en espera hacia el Sur</div>
+                  <div className="empty-queue-msg">Sin vehiculos en espera hacia el Sur</div>
                 ) : (
                   estado.colaSur.map((vehiculo) => (
                     <div key={vehiculo.id} className="car-chip car-south">
@@ -667,7 +642,6 @@ function App() {
           </div>
         </section>
 
-        {/* PANEL DE CONTROL INTERACTIVO */}
         <section className="control-panel">
           <div className="control-buttons-row">
             <button 
@@ -701,7 +675,6 @@ function App() {
           </div>
 
           <div className="settings-bar">
-            {/* Reto Anti-Inanición */}
             <label className="toggle-wrapper">
               <input 
                 type="checkbox" 
@@ -756,10 +729,8 @@ function App() {
           </div>
         </section>
 
-        {/* LOGS TERMINAL Y ANÁLISIS DE CONCURRENCIA */}
         <section className="details-grid">
           
-          {/* TERMINAL DE LOGS */}
           <div className="terminal-card">
             <div className="terminal-header">
               <div className="terminal-title">
@@ -785,7 +756,6 @@ function App() {
             </div>
           </div>
 
-          {/* PREGUNTAS DE ANÁLISIS Y TEORÍA */}
           <div className="analysis-card">
             <h3 className="analysis-title">
               <span>📚 Análisis Teórico &amp; Preguntas de Control</span>
@@ -794,7 +764,7 @@ function App() {
             <div className="accordion-item">
               <div className="accordion-question">1. ¿Por qué el acceso debe coordinarse con un Mutex y variables de condición?</div>
               <div className="accordion-answer">
-                El puente es un recurso crítico de carril único. Para evitar colisiones catastróficas, las variables de estado (dirección y contador de vehículos) deben consultarse y actualizarse de manera atómica con un mutex. Las variables de condición permiten suspender (wait) a los vehículos en sentido contrario sin consumir CPU hasta que el puente quede libre.
+                El puente es un recurso crítico de carril único. Para evitar colisiones, las variables de estado (dirección y contador de vehículos) deben consultarse y actualizarse de manera atómica con un mutex. Las variables de condición permiten suspender (wait) a los vehículos en sentido contrario sin consumir CPU hasta que el puente quede libre.
               </div>
             </div>
 
@@ -821,6 +791,5 @@ function App() {
   );
 }
 
-// Renderizar la aplicación React
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);

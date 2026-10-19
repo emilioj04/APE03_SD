@@ -1,8 +1,5 @@
 package com.sistemas.distribuidos.puente.dto;
 
-/**
- * Petición para lanzar una simulación masiva concurrente.
- */
 public class SimulacionRequest {
     private int cantidadNorte = 5;
     private int cantidadSur = 5;

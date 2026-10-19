@@ -56,6 +56,5 @@ while ($listener.IsListening) {
         }
         $response.Close()
     } catch {
-        # Keep listening
     }
 }

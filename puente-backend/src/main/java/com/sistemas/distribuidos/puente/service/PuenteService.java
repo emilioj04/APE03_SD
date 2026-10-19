@@ -19,19 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-/**
- * Servicio central de sincronización del puente de doble sentido.
- * Implementa exclusión mutua mediante ReentrantLock (Mutex) y variables
- * de condición para coordinar el sentido del flujo y evitar colisiones e inanición.
- */
 @Service
 public class PuenteService {
 
     private static final Logger logger = LoggerFactory.getLogger(PuenteService.class);
 
-    // ==========================================
-    // VARIABLES COMPARTIDAS Y MECANISMOS DE SINCRONIZACIÓN
-    // ==========================================
     private Direccion direccionActual = Direccion.NINGUNA;
     private int vehiculosNorteEnPuente = 0;
     private int vehiculosSurEnPuente = 0;
@@ -40,21 +32,14 @@ public class PuenteService {
     private int totalCruzados = 0;
     private boolean colisionDetectada = false;
 
-    // Mutex con política Fair para proteger las secciones críticas
     private final ReentrantLock mutex = new ReentrantLock(true);
-
-    // Variables de condición para pausar/despertar hilos de cada sentido
     private final Condition condicionNorte = mutex.newCondition();
     private final Condition condicionSur = mutex.newCondition();
 
-    // ==========================================
-    // RETO: CONTROL DE INANICIÓN (PREVENCIÓN DE MONOPOLIO)
-    // ==========================================
     private boolean modoEquitativo = true;
     private int limiteConsecutivos = 5;
     private int consecutivosCruzados = 0;
 
-    // Estructuras de soporte para visualización y métricas
     private final Map<String, Vehiculo> vehiculosActivos = new ConcurrentHashMap<>();
     private final List<EventoLog> bufferLogs = Collections.synchronizedList(new LinkedList<>());
     private final int MAX_LOGS = 120;
@@ -63,12 +48,9 @@ public class PuenteService {
 
     public PuenteService() {
         registrarEvento("INICIALIZACION", null, Direccion.NINGUNA,
-                "Sistema de Cruce de Puente inicializado. Mutex activo, Dirección inicial: NINGUNA.");
+                "Sistema de Cruce de Puente inicializado. Mutex activo, Direccion inicial: NINGUNA.");
     }
 
-    /**
-     * Procedimiento concurrente para que un vehículo con destino al NORTE cruce el puente.
-     */
     public void cruzarNorte(Vehiculo vehiculo) {
         String vehiculoId = vehiculo.getId();
         long inicioEspera = System.currentTimeMillis();
@@ -80,23 +62,21 @@ public class PuenteService {
             vehiculosActivos.put(vehiculoId, vehiculo);
 
             registrarEvento("LLEGADA", vehiculoId, Direccion.NORTE,
-                    String.format("Vehículo %s llega a la orilla SUR con destino al NORTE. [En espera Norte: %d, Dirección activa: %s]",
+                    String.format("Vehiculo %s llega a la orilla SUR con destino al NORTE. [En espera Norte: %d, Direccion activa: %s]",
                             vehiculoId, vehiculosEsperandoNorte, direccionActual));
 
-            // MIENTRAS la dirección sea SUR o se deba ceder el turno por política anti-inanición
             while (debeEsperarNorte()) {
                 if (direccionActual == Direccion.SUR) {
                     registrarEvento("BLOQUEO", vehiculoId, Direccion.NORTE,
-                            String.format("Vehículo %s BLOQUEADO en wait(condicionNorte): El puente está ocupado en sentido SUR.", vehiculoId));
+                            String.format("Vehiculo %s BLOQUEADO en wait: El puente esta ocupado en sentido SUR.", vehiculoId));
                 } else if (modoEquitativo && vehiculosEsperandoSur > 0 && consecutivosCruzados >= limiteConsecutivos) {
                     registrarEvento("CONTROL_INANICION", vehiculoId, Direccion.NORTE,
-                            String.format("Vehículo %s en espera por LÍMITE DE MONOPOLIO (%d/%d autos). Se cede el paso a la cola SUR.",
+                            String.format("Vehiculo %s en espera por limite de monopolio (%d/%d autos). Se cede el paso a la cola SUR.",
                                     vehiculoId, consecutivosCruzados, limiteConsecutivos));
                 }
                 condicionNorte.await();
             }
 
-            // Ha obtenido el permiso para ingresar
             vehiculosEsperandoNorte--;
             direccionActual = Direccion.NORTE;
             vehiculosNorteEnPuente++;
@@ -106,14 +86,12 @@ public class PuenteService {
             vehiculo.setHoraEntrada(LocalDateTime.now());
             vehiculo.setTiempoEsperaMs(System.currentTimeMillis() - inicioEspera);
 
-            // Verificación formal del invariante de seguridad
             verificarInvarianteSeguridad();
 
             registrarEvento("ENTRADA", vehiculoId, Direccion.NORTE,
-                    String.format("Vehículo %s INGRESA al puente hacia el NORTE. [En puente: %d, Consecutivos: %d]",
+                    String.format("Vehiculo %s INGRESA al puente hacia el NORTE. [En puente: %d, Consecutivos: %d]",
                             vehiculoId, vehiculosNorteEnPuente, consecutivosCruzados));
 
-            // Si aún no hemos alcanzado el límite de monopolio y hay más esperando en Norte, despertamos al siguiente
             if (puedeDespertarSiguienteNorte()) {
                 condicionNorte.signal();
             }
@@ -126,18 +104,12 @@ public class PuenteService {
             mutex.unlock();
         }
 
-        // ==========================================
-        // SECCIÓN DE CRUCE (SIMULACIÓN DE TIEMPO EN EL PUENTE)
-        // ==========================================
         try {
             Thread.sleep(vehiculo.getTiempoCruceMs());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        // ==========================================
-        // SALIDA DEL PUENTE (SECCIÓN CRÍTICA DE LIBERACIÓN)
-        // ==========================================
         mutex.lock();
         try {
             vehiculosNorteEnPuente--;
@@ -146,33 +118,29 @@ public class PuenteService {
             vehiculo.setHoraSalida(LocalDateTime.now());
 
             registrarEvento("SALIDA", vehiculoId, Direccion.NORTE,
-                    String.format("Vehículo %s COMPLETA el cruce hacia el NORTE y sale del puente. [Restantes en puente: %d]",
+                    String.format("Vehiculo %s COMPLETA el cruce hacia el NORTE y sale del puente. [Restantes en puente: %d]",
                             vehiculoId, vehiculosNorteEnPuente));
 
-            // Si este era el último vehículo en el puente
             if (vehiculosNorteEnPuente == 0) {
                 if (vehiculosEsperandoSur > 0) {
-                    // Hay vehículos esperando en la dirección contraria: cambio obligatorio
                     direccionActual = Direccion.SUR;
                     consecutivosCruzados = 0;
                     registrarEvento("CAMBIO_DIRECCION", null, Direccion.SUR,
-                            String.format("Puente LIBRE. Dirección cambia a SUR. Despertando a %d vehículos en espera SUR.",
+                            String.format("Puente LIBRE. Direccion cambia a SUR. Despertando a %d vehiculos en espera SUR.",
                                     vehiculosEsperandoSur));
                     condicionSur.signalAll();
                 } else if (vehiculosEsperandoNorte > 0) {
-                    // No hay vehículos en el Sur, continúan los del Norte
                     direccionActual = Direccion.NORTE;
                     consecutivosCruzados = 0;
                     registrarEvento("CONTINUACION", null, Direccion.NORTE,
-                            String.format("Puente despejado. Continuando con vehículos en espera NORTE (%d esperando).",
+                            String.format("Puente despejado. Continuando con vehiculos en espera NORTE (%d esperando).",
                                     vehiculosEsperandoNorte));
                     condicionNorte.signalAll();
                 } else {
-                    // No hay vehículos esperando en ninguna dirección
                     direccionActual = Direccion.NINGUNA;
                     consecutivosCruzados = 0;
                     registrarEvento("PUENTE_LIBRE", null, Direccion.NINGUNA,
-                            "El puente queda totalmente LIBRE. Dirección restablecida a NINGUNA.");
+                            "El puente queda totalmente LIBRE. Direccion restablecida a NINGUNA.");
                 }
             }
 
@@ -181,10 +149,6 @@ public class PuenteService {
         }
     }
 
-    /**
-     * Procedimiento concurrente para que un vehículo con destino al SUR cruce el puente.
-     * Completa el reto solicitado en la guía implementando la lógica simétrica.
-     */
     public void cruzarSur(Vehiculo vehiculo) {
         String vehiculoId = vehiculo.getId();
         long inicioEspera = System.currentTimeMillis();
@@ -196,23 +160,21 @@ public class PuenteService {
             vehiculosActivos.put(vehiculoId, vehiculo);
 
             registrarEvento("LLEGADA", vehiculoId, Direccion.SUR,
-                    String.format("Vehículo %s llega a la orilla NORTE con destino al SUR. [En espera Sur: %d, Dirección activa: %s]",
+                    String.format("Vehiculo %s llega a la orilla NORTE con destino al SUR. [En espera Sur: %d, Direccion activa: %s]",
                             vehiculoId, vehiculosEsperandoSur, direccionActual));
 
-            // MIENTRAS la dirección sea NORTE o se deba ceder el turno por política anti-inanición
             while (debeEsperarSur()) {
                 if (direccionActual == Direccion.NORTE) {
                     registrarEvento("BLOQUEO", vehiculoId, Direccion.SUR,
-                            String.format("Vehículo %s BLOQUEADO en wait(condicionSur): El puente está ocupado en sentido NORTE.", vehiculoId));
+                            String.format("Vehiculo %s BLOQUEADO en wait: El puente esta ocupado en sentido NORTE.", vehiculoId));
                 } else if (modoEquitativo && vehiculosEsperandoNorte > 0 && consecutivosCruzados >= limiteConsecutivos) {
                     registrarEvento("CONTROL_INANICION", vehiculoId, Direccion.SUR,
-                            String.format("Vehículo %s en espera por LÍMITE DE MONOPOLIO (%d/%d autos). Se cede el paso a la cola NORTE.",
+                            String.format("Vehiculo %s en espera por limite de monopolio (%d/%d autos). Se cede el paso a la cola NORTE.",
                                     vehiculoId, consecutivosCruzados, limiteConsecutivos));
                 }
                 condicionSur.await();
             }
 
-            // Ha obtenido el permiso para ingresar
             vehiculosEsperandoSur--;
             direccionActual = Direccion.SUR;
             vehiculosSurEnPuente++;
@@ -222,14 +184,12 @@ public class PuenteService {
             vehiculo.setHoraEntrada(LocalDateTime.now());
             vehiculo.setTiempoEsperaMs(System.currentTimeMillis() - inicioEspera);
 
-            // Verificación formal del invariante de seguridad
             verificarInvarianteSeguridad();
 
             registrarEvento("ENTRADA", vehiculoId, Direccion.SUR,
-                    String.format("Vehículo %s INGRESA al puente hacia el SUR. [En puente: %d, Consecutivos: %d]",
+                    String.format("Vehiculo %s INGRESA al puente hacia el SUR. [En puente: %d, Consecutivos: %d]",
                             vehiculoId, vehiculosSurEnPuente, consecutivosCruzados));
 
-            // Si aún no hemos alcanzado el límite de monopolio y hay más esperando en Sur, despertamos al siguiente
             if (puedeDespertarSiguienteSur()) {
                 condicionSur.signal();
             }
@@ -242,18 +202,12 @@ public class PuenteService {
             mutex.unlock();
         }
 
-        // ==========================================
-        // SECCIÓN DE CRUCE (SIMULACIÓN DE TIEMPO EN EL PUENTE)
-        // ==========================================
         try {
             Thread.sleep(vehiculo.getTiempoCruceMs());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        // ==========================================
-        // SALIDA DEL PUENTE (SECCIÓN CRÍTICA DE LIBERACIÓN)
-        // ==========================================
         mutex.lock();
         try {
             vehiculosSurEnPuente--;
@@ -262,33 +216,29 @@ public class PuenteService {
             vehiculo.setHoraSalida(LocalDateTime.now());
 
             registrarEvento("SALIDA", vehiculoId, Direccion.SUR,
-                    String.format("Vehículo %s COMPLETA el cruce hacia el SUR y sale del puente. [Restantes en puente: %d]",
+                    String.format("Vehiculo %s COMPLETA el cruce hacia el SUR y sale del puente. [Restantes en puente: %d]",
                             vehiculoId, vehiculosSurEnPuente));
 
-            // Si este era el último vehículo en el puente
             if (vehiculosSurEnPuente == 0) {
                 if (vehiculosEsperandoNorte > 0) {
-                    // Hay vehículos esperando en la dirección contraria: cambio obligatorio
                     direccionActual = Direccion.NORTE;
                     consecutivosCruzados = 0;
                     registrarEvento("CAMBIO_DIRECCION", null, Direccion.NORTE,
-                            String.format("Puente LIBRE. Dirección cambia a NORTE. Despertando a %d vehículos en espera NORTE.",
+                            String.format("Puente LIBRE. Direccion cambia a NORTE. Despertando a %d vehiculos en espera NORTE.",
                                     vehiculosEsperandoNorte));
                     condicionNorte.signalAll();
                 } else if (vehiculosEsperandoSur > 0) {
-                    // No hay vehículos en el Norte, continúan los del Sur
                     direccionActual = Direccion.SUR;
                     consecutivosCruzados = 0;
                     registrarEvento("CONTINUACION", null, Direccion.SUR,
-                            String.format("Puente despejado. Continuando con vehículos en espera SUR (%d esperando).",
+                            String.format("Puente despejado. Continuando con vehiculos en espera SUR (%d esperando).",
                                     vehiculosEsperandoSur));
                     condicionSur.signalAll();
                 } else {
-                    // No hay vehículos esperando en ninguna dirección
                     direccionActual = Direccion.NINGUNA;
                     consecutivosCruzados = 0;
                     registrarEvento("PUENTE_LIBRE", null, Direccion.NINGUNA,
-                            "El puente queda totalmente LIBRE. Dirección restablecida a NINGUNA.");
+                            "El puente queda totalmente LIBRE. Direccion restablecida a NINGUNA.");
                 }
             }
 
@@ -297,9 +247,6 @@ public class PuenteService {
         }
     }
 
-    /**
-     * Condiciones para determinar si un vehículo que va al NORTE debe esperar.
-     */
     private boolean debeEsperarNorte() {
         if (direccionActual == Direccion.SUR) {
             return true;
@@ -310,9 +257,6 @@ public class PuenteService {
         return false;
     }
 
-    /**
-     * Condiciones para determinar si un vehículo que va al SUR debe esperar.
-     */
     private boolean debeEsperarSur() {
         if (direccionActual == Direccion.NORTE) {
             return true;
@@ -337,14 +281,10 @@ public class PuenteService {
         return vehiculosEsperandoSur > 0 && consecutivosCruzados < limiteConsecutivos;
     }
 
-    /**
-     * Comprobación estricta del criterio de verificación:
-     * "Comprobar que nunca crucen vehículos en sentidos opuestos simultáneamente".
-     */
     private void verificarInvarianteSeguridad() {
         if (vehiculosNorteEnPuente > 0 && vehiculosSurEnPuente > 0) {
             this.colisionDetectada = true;
-            String errorMsg = String.format("¡COLISIÓN DETECTADA EN EL PUENTE! %d al Norte y %d al Sur simultáneamente.",
+            String errorMsg = String.format("Colision detectada en el puente: %d al Norte y %d al Sur simultaneamente.",
                     vehiculosNorteEnPuente, vehiculosSurEnPuente);
             registrarEvento("COLISION", null, direccionActual, errorMsg);
             logger.error(errorMsg);
@@ -352,9 +292,6 @@ public class PuenteService {
         }
     }
 
-    /**
-     * Encola un vehículo individual mediante un hilo dedicado.
-     */
     public Vehiculo encolarVehiculo(VehiculoRequest request) {
         String id = (request.getId() != null && !request.getId().isBlank())
                 ? request.getId()
@@ -375,12 +312,9 @@ public class PuenteService {
         return vehiculo;
     }
 
-    /**
-     * Ejecuta una simulación concurrente con N vehículos al Norte y M al Sur.
-     */
     public void iniciarSimulacion(SimulacionRequest request) {
         registrarEvento("INICIO_SIMULACION", null, Direccion.NINGUNA,
-                String.format("Lanzando simulación concurrente: %d vehículos NORTE y %d vehículos SUR. [Modo equitativo: %s]",
+                String.format("Lanzando simulacion concurrente: %d vehiculos NORTE y %d vehiculos SUR. [Modo equitativo: %s]",
                         request.getCantidadNorte(), request.getCantidadSur(), modoEquitativo ? "ACTIVADO" : "DESACTIVADO"));
 
         executorService.submit(() -> {
@@ -423,9 +357,6 @@ public class PuenteService {
         });
     }
 
-    /**
-     * Reinicia el estado del puente y la simulación.
-     */
     public void reiniciar() {
         mutex.lock();
         try {
@@ -441,15 +372,12 @@ public class PuenteService {
             bufferLogs.clear();
 
             registrarEvento("REINICIO", null, Direccion.NINGUNA,
-                    "Estado del puente reiniciado con éxito. Contadores en 0, semáforos libres.");
+                    "Estado del puente reiniciado. Contadores en 0, puente libre.");
         } finally {
             mutex.unlock();
         }
     }
 
-    /**
-     * Actualiza la configuración de equidad / inanición.
-     */
     public void configurar(ConfiguracionRequest request) {
         mutex.lock();
         try {
@@ -460,16 +388,13 @@ public class PuenteService {
                 this.limiteConsecutivos = request.getLimiteConsecutivos();
             }
             registrarEvento("CONFIGURACION", null, direccionActual,
-                    String.format("Configuración actualizada -> Modo Equitativo: %s, Límite por Lote: %d",
+                    String.format("Configuracion actualizada: Modo Equitativo %s, Limite por Lote %d",
                             modoEquitativo ? "ACTIVADO" : "DESACTIVADO", limiteConsecutivos));
         } finally {
             mutex.unlock();
         }
     }
 
-    /**
-     * Obtiene una fotografía completa del estado del puente para el frontend.
-     */
     public EstadoPuenteDto obtenerEstado() {
         mutex.lock();
         try {

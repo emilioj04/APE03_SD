@@ -1,8 +1,5 @@
 package com.sistemas.distribuidos.puente.dto;
 
-/**
- * Petición para actualizar la configuración de sincronización (política anti-inanición).
- */
 public class ConfiguracionRequest {
     private Boolean modoEquitativo;
     private Integer limiteConsecutivos;

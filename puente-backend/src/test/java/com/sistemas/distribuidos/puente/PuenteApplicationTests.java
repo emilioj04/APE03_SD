@@ -48,10 +48,9 @@ class PuenteApplicationTests {
         }
 
         latch.await(5, TimeUnit.SECONDS);
-        Thread.sleep(3000); // Dar tiempo a que los vehículos crucen
+        Thread.sleep(3000);
 
         EstadoPuenteDto estado = puenteService.obtenerEstado();
-        // Verificar que nunca se haya detectado colisión
         Assertions.assertFalse(estado.isColisionDetectada(), "No debe haber colisiones registradas");
         executor.shutdown();
     }

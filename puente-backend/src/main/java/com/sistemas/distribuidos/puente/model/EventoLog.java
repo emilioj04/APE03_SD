@@ -3,14 +3,11 @@ package com.sistemas.distribuidos.puente.model;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
-/**
- * Registro de eventos de concurrencia y sincronización del puente.
- */
 public class EventoLog {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
 
     private String timestamp;
-    private String tipo; // LLEGADA, ESPERA, ENTRADA, SALIDA, CAMBIO_DIRECCION, BLOQUEO, ALERTA
+    private String tipo;
     private String vehiculoId;
     private Direccion direccion;
     private String mensaje;
