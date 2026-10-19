@@ -1,0 +1,14 @@
+# Requerimientos del Sistema para APE 03 - Ejercicio 4
+
+# 1. Contenedores y orquestacion (Recomendado)
+Docker Desktop >= 4.28.0
+Docker Compose >= 2.24.0
+
+# 2. Entorno Java Backend (Alternativa local sin Docker)
+Java JDK >= 17.0.0 (Eclipse Temurin 17 o Microsoft OpenJDK 17)
+Apache Maven >= 3.9.0
+
+# 3. Comandos de instalacion automatica con winget (PowerShell como Administrador)
+# winget install --id Docker.DockerDesktop -e --accept-source-agreements --accept-package-agreements
+# winget install --id EclipseAdoptium.Temurin.17.JDK -e --accept-source-agreements --accept-package-agreements
+# winget install --id Apache.Maven -e --accept-source-agreements --accept-package-agreements
