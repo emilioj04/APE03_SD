@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Productor-Consumidor</title>
+<style>
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --line:#d1d5db; --txt:#111827; --muted:#6b7280;
+  --acc:#1d4ed8; --ok:#15803d; --bad:#b91c1c; --cell:#eff6ff;
+  --mono:ui-monospace,"JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#e5e7eb;--muted:#8b93a1;--acc:#60a5fa;--ok:#4ade80;--bad:#f87171;--cell:#1b2638;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:15px;font-weight:600;margin:0}
+header h1 small{color:var(--muted);font-weight:400;margin-left:10px}
+.svc{display:flex;gap:22px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}
+.up .dot{background:var(--ok)} .down .dot{background:var(--bad)}
+.up b{color:var(--ok)} .down b{color:var(--bad)}
+
+main{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;padding:16px 20px}
+.p{background:var(--panel);border:1px solid var(--line);border-radius:4px;min-width:0}
+.p>h2{margin:0;padding:8px 12px;font-size:11px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+.b{padding:12px}
+.s12{grid-column:span 12}.s8{grid-column:span 8}.s4{grid-column:span 4}
+@media(max-width:960px){.s8,.s4{grid-column:span 12}}
+
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.metrics div{padding:12px 16px;border-right:1px solid var(--line)}
+.metrics div:last-child{border-right:0}
+.metrics span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.metrics b{display:block;font-family:var(--mono);font-size:24px;font-weight:600;margin-top:2px}
+
+.slots{display:grid;gap:6px}
+.slot{border:1px solid var(--line);border-radius:3px;height:68px;padding:5px 8px;
+  display:flex;flex-direction:column;justify-content:space-between;font-family:var(--mono)}
+.slot i{font-style:normal;font-size:11px;color:var(--muted)}
+.slot span{font-size:16px;text-align:center;color:var(--muted)}
+.slot.f{background:var(--cell);border-color:var(--acc)}
+.slot.f span{color:var(--txt);font-weight:600}
+.bar{height:6px;background:var(--line);border-radius:3px;margin:14px 0 8px;overflow:hidden}
+.bar div{height:100%;background:var(--acc);width:0;transition:width .2s}
+.estado{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.estado b{color:var(--txt)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;
+  padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.mono{font-family:var(--mono)}
+.note{font-size:11px;color:var(--muted);margin-top:8px}
+.ok{color:var(--ok);font-family:var(--mono);font-weight:600}
+.bad{color:var(--bad);font-family:var(--mono);font-weight:600}
+.sub{margin:14px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+.ctl{display:grid;grid-template-columns:110px 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px}
+.ctl label{font-size:11px;color:var(--muted);display:block;margin-bottom:2px}
+.ctl .who{font-weight:600;padding-bottom:6px}
+input{width:100%;padding:5px 7px;font-family:var(--mono);font-size:13px;color:var(--txt);
+  background:var(--bg);border:1px solid var(--line);border-radius:3px}
+button{padding:6px 14px;font-size:13px;font-weight:600;color:#fff;background:var(--acc);border:1px solid var(--acc);
+  border-radius:3px;cursor:pointer}
+button:hover{filter:brightness(1.1)}
+#ctlmsg{font-size:12px;color:var(--bad);min-height:16px}
+
+canvas{width:100%;height:170px;display:block}
+.logwrap{max-height:280px;overflow:auto}
+.logwrap thead th{position:sticky;top:0;background:var(--panel)}
+.logwrap td{font-family:var(--mono);font-size:12px;padding:4px 8px}
+.t-p{color:var(--acc)} .t-c{color:var(--ok)}
+
+#toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
+.toast{padding:10px 14px;border-radius:3px;font-size:13px;color:#fff;background:#15803d;box-shadow:0 2px 8px rgba(0,0,0,.3);animation:in .15s}
+.toast.err{background:#b91c1c}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+button:disabled{opacity:.6;cursor:wait}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Monitor Productor-Consumidor<small>Sistemas Distribuidos &middot; Práctica 3 &middot; Ejercicio 3</small></h1>
+  <div class="svc">
+    <span id="sA"></span><span id="sP"></span><span id="sC"></span>
+  </div>
+</header>
+
+<main>
+  <section class="p s12">
+    <div class="metrics">
+      <div><span>Ocupación</span><b id="mOcup">-</b></div>
+      <div><span>Producidas</span><b id="mProd">-</b></div>
+      <div><span>Consumidas</span><b id="mCons">-</b></div>
+      <div><span>Máx. ocupación</span><b id="mMax">-</b></div>
+      <div><span>Bloq. productores</span><b id="mBP">-</b></div>
+      <div><span>Bloq. consumidores</span><b id="mBC">-</b></div>
+    </div>
+  </section>
+
+  <section class="p s8">
+    <h2>Almacén (cola acotada, FIFO)</h2>
+    <div class="b">
+      <div class="slots" id="slots"></div>
+      <div class="bar"><div id="fill"></div></div>
+      <div class="estado" id="estado"></div>
+    </div>
+  </section>
+
+  <section class="p s4">
+    <h2>Control de hilos</h2>
+    <div class="b">
+      <div class="ctl">
+        <div class="who">Productores</div>
+        <div><label>Hilos</label><input id="nProd" type="number" value="2" min="1"></div>
+        <div><label>Piezas c/u</label><input id="pProd" type="number" value="5" min="1"></div>
+        <button onclick="iniciar('prod', this)">Ejecutar</button>
+      </div>
+      <div class="ctl">
+        <div class="who">Consumidores</div>
+        <div><label>Hilos</label><input id="nCons" type="number" value="2" min="1"></div>
+        <div><label>Piezas c/u</label><input id="pCons" type="number" value="5" min="1"></div>
+        <button onclick="iniciar('cons', this)">Ejecutar</button>
+      </div>
+      <div id="ctlmsg"></div>
+      <div class="note">Cada ejecución crea nuevos hilos en el servicio correspondiente. Un hilo bloqueado permanece así hasta que el otro lado libere el recurso.</div>
+    </div>
+  </section>
+
+  <section class="p s8">
+    <h2>Ocupación del almacén (últimos 60 s)</h2>
+    <div class="b"><canvas id="cv"></canvas></div>
+  </section>
+
+  <section class="p s4">
+    <h2>Sincronización</h2>
+    <div class="b">
+      <table>
+        <thead><tr><th>Primitiva</th><th class="n">Inicial</th><th class="n">Actual</th><th class="n">Bloq.</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">espacios</td><td class="n" id="eIni">-</td><td class="n" id="eAct">-</td><td class="n" id="eBlk">-</td></tr>
+          <tr><td class="mono">elementos</td><td class="n">0</td><td class="n" id="lAct">-</td><td class="n" id="lBlk">-</td></tr>
+          <tr><td class="mono">mutex_almacen</td><td class="n">1</td><td class="n">-</td><td class="n">-</td></tr>
+        </tbody>
+      </table>
+      <div class="note">Valores actuales derivados del estado de la cola.</div>
+
+      <div class="sub">Invariantes</div>
+      <table>
+        <tbody>
+          <tr><td>0 &le; ocupados &le; capacidad</td><td class="n" id="i1">-</td></tr>
+          <tr><td>producidas &minus; consumidas = ocupados</td><td class="n" id="i2">-</td></tr>
+          <tr><td>máx. ocupación &le; capacidad</td><td class="n" id="i3">-</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="p s12">
+    <h2>Registro de operaciones (más reciente primero)</h2>
+    <div class="logwrap">
+      <table>
+        <thead><tr><th>Hora</th><th>Origen</th><th class="n">Hilo</th><th>Operación</th><th>Pieza</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+<script>
+  // Si se despliega con Docker, solo se cambian estas URLs
+  const CFG = {
+    ALMACEN:    "http://localhost:8080",
+    PRODUCTOR:  "http://localhost:8081",
+    CONSUMIDOR: "http://localhost:8082"
+  };
+  const $ = id => document.getElementById(id);
+  const HMAX = 120;                 // 120 muestras x 500 ms = 60 s
+  const hist = [];
+  let maxSeen = 0, bP = 0, bC = 0, cap = 5;
+
+  async function get(url) {
+    const t = performance.now();
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status);
+    return { j: await r.json(), ms: Math.round(performance.now() - t) };
+  }
+
+  function svc(id, nombre, puerto, res) {
+    const el = $(id);
+    if (res.status === "fulfilled") {
+      el.className = "up";
+      el.innerHTML = `<i class="dot"></i>${nombre}:${puerto} <b>UP</b> ${res.value.ms} ms`;
+    } else {
+      el.className = "down";
+      el.innerHTML = `<i class="dot"></i>${nombre}:${puerto} <b>DOWN</b>`;
+    }
+  }
+
+  function toast(texto, error) {
+    const t = document.createElement("div");
+    t.className = "toast" + (error ? " err" : "");
+    t.textContent = texto;
+    $("toasts").appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  async function iniciar(tipo, btn) {
+    const prod = tipo === "prod";
+    const n = $(prod ? "nProd" : "nCons").value, p = $(prod ? "pProd" : "pCons").value;
+    const url = prod
+      ? `${CFG.PRODUCTOR}/productor/iniciar?productores=${n}&piezas=${p}`
+      : `${CFG.CONSUMIDOR}/consumidor/iniciar?consumidores=${n}&piezas=${p}`;
+    const txt = btn.textContent;
+    btn.disabled = true; btn.textContent = "Ejecutando...";
+    try {
+      const r = await fetch(url, { method: "POST" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      toast(`${prod ? "Productores" : "Consumidores"} iniciados: ${n} hilos x ${p} piezas`);
+    } catch (e) {
+      toast("Servicio no disponible: " + e.message, true);
+    } finally {
+      setTimeout(() => { btn.disabled = false; btn.textContent = txt; }, 600);
+    }
+  }
+
+  const re = /^(\S+)\s+(Productor|Consumidor)\s+(\S+)\s+(agregó|retiró)\s+(\S+)$/;
+
+  function renderAlmacen(a) {
+    cap = a.capacidad;
+    maxSeen = Math.max(maxSeen, a.ocupados);
+    const maxOc = a.maxOcupados ?? maxSeen;
+    hist.push(a.ocupados); if (hist.length > HMAX) hist.shift();
+
+    $("mOcup").textContent = `${a.ocupados}/${cap}`;
+    $("mProd").textContent = a.producidas;
+    $("mCons").textContent = a.consumidas;
+    $("mMax").textContent  = maxOc;
+    $("mBP").textContent   = bP;
+    $("mBC").textContent   = bC;
+
+    $("slots").style.gridTemplateColumns = `repeat(${cap},1fr)`;
+    $("slots").innerHTML = Array.from({ length: cap }, (_, i) => {
+      const pz = a.piezas[i];
+      return `<div class="slot ${pz ? "f" : ""}"><i>[${i}]${i === 0 ? " frente" : ""}</i><span>${pz ?? "libre"}</span></div>`;
+    }).join("");
+    $("fill").style.width = (a.ocupados / cap * 100) + "%";
+    const est = a.ocupados === cap ? "LLENO. Los productores se bloquean en wait(espacios)."
+              : a.ocupados === 0   ? "VACÍO. Los consumidores se bloquean en wait(elementos)."
+              : "PARCIAL. Productores y consumidores avanzan sin bloqueo.";
+    $("estado").innerHTML = `Estado: <b>${est}</b>`;
+
+    $("eIni").textContent = cap;
+    $("eAct").textContent = cap - a.ocupados;
+    $("lAct").textContent = a.ocupados;
+    $("eBlk").textContent = bP;
+    $("lBlk").textContent = bC;
+
+    const chk = (id, v) => { $(id).textContent = v ? "OK" : "FALLA"; $(id).className = "n " + (v ? "ok" : "bad"); };
+    chk("i1", a.ocupados >= 0 && a.ocupados <= cap);
+    chk("i2", a.producidas - a.consumidas === a.ocupados);
+    chk("i3", maxOc <= cap);
+
+    $("log").innerHTML = a.eventos.slice().reverse().map(e => {
+      const m = re.exec(e);
+      if (!m) return `<tr><td colspan="5">${e}</td></tr>`;
+      const prod = m[2] === "Productor";
+      return `<tr><td>${m[1]}</td><td class="${prod ? "t-p" : "t-c"}">${m[2].toUpperCase()}</td>` +
+             `<td class="n">${m[3]}</td><td>${m[4] === "agregó" ? "insertar" : "extraer"}</td><td>${m[5]}</td></tr>`;
+    }).join("");
+
+    dibujar();
+  }
+
+  function dibujar() {
+    const cv = $("cv"), dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const g = cv.getContext("2d"); g.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement);
+    const col = n => css.getPropertyValue(n).trim();
+    const L = 30, R = 8, T = 8, B = 18, pw = w - L - R, ph = h - T - B;
+    const y = v => T + ph - (v / cap) * ph;
+    const x = i => L + ((HMAX - hist.length + i) / (HMAX - 1)) * pw;
+
+    g.font = "10px monospace"; g.textBaseline = "middle"; g.textAlign = "right";
+    for (let v = 0; v <= cap; v++) {
+      g.strokeStyle = col("--line"); g.lineWidth = 1;
+      g.beginPath(); g.moveTo(L, y(v)); g.lineTo(w - R, y(v)); g.stroke();
+      g.fillStyle = col("--muted"); g.fillText(v, L - 6, y(v));
+    }
+    g.setLineDash([4, 3]); g.strokeStyle = col("--bad");
+    g.beginPath(); g.moveTo(L, y(cap)); g.lineTo(w - R, y(cap)); g.stroke(); g.setLineDash([]);
+
+    if (hist.length > 1) {
+      g.strokeStyle = col("--acc"); g.lineWidth = 2; g.beginPath();
+      hist.forEach((v, i) => {
+        if (i === 0) g.moveTo(x(i), y(v));
+        else { g.lineTo(x(i), y(hist[i - 1])); g.lineTo(x(i), y(v)); }
+      });
+      g.stroke();
+    }
+    g.fillStyle = col("--muted"); g.textBaseline = "alphabetic";
+    g.textAlign = "left";  g.fillText("-60 s", L, h - 4);
+    g.textAlign = "right"; g.fillText("ahora", w - R, h - 4);
+  }
+
+  async function tick() {
+    const [a, p, c] = await Promise.allSettled([
+      get(CFG.ALMACEN + "/almacen/estado"),
+      get(CFG.PRODUCTOR + "/productor/estado"),
+      get(CFG.CONSUMIDOR + "/consumidor/estado")
+    ]);
+    svc("sA", "almacen", 8080, a); svc("sP", "productor", 8081, p); svc("sC", "consumidor", 8082, c);
+    bP = p.status === "fulfilled" ? p.value.j.bloqueadosEsperandoEspacio : 0;
+    bC = c.status === "fulfilled" ? c.value.j.bloqueadosEsperandoPieza : 0;
+    if (a.status === "fulfilled") renderAlmacen(a.value.j);
+  }
+  setInterval(tick, 500);
+  tick();
+</script>
+</body>
+</html>

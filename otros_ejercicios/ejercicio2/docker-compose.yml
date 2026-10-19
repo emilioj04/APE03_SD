@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend-cajero
+    ports:
+      - "8080:8080"
+    container_name: cajero-backend-service
+
+  frontend:
+    build: 
+      context: ./frontend-cajero
+    ports:
+      - "3000:80"
+    container_name: cajero-frontend-service
+    depends_on:
+      - backend

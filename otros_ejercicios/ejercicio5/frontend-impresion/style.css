@@ -1,0 +1,62 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #121212;
+    color: #e0e0e0;
+    display: flex;
+    justify-content: center;
+    padding-top: 50px;
+    margin: 0;
+}
+
+.container {
+    background-color: #1e1e1e;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    max-width: 600px;
+    border: 1px solid #333;
+}
+
+h1 { color: #bb86fc; margin-top: 0; }
+p { color: #aaaaaa; margin-bottom: 20px; }
+
+button {
+    background-color: #03dac6;
+    color: #000000;
+    border: none;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+    width: 100%;
+    transition: background-color 0.3s;
+}
+
+button:hover { background-color: #00b3a6; }
+button:disabled { background-color: #555; color: #888; cursor: not-allowed; }
+
+.consola {
+    background-color: #000000;
+    border: 1px solid #333;
+    border-radius: 5px;
+    margin-top: 20px;
+    padding: 15px;
+    min-height: 200px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+}
+
+li { margin-bottom: 8px; color: #4caf50; }
+li.error { color: #cf6679; }
+
+#mensaje-final { color: #03dac6; text-align: center; margin-top: 15px; }

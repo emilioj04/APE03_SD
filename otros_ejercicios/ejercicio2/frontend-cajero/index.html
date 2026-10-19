@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cajero Compartido - Exclusión Mutua</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Simulador de Cajero (Mutex)</h1>
+        <p>Saldo inicial: $1000. Procesos a ejecutar: Retiro ($300), Retiro ($250), Depósito ($200).</p>
+        
+        <button id="btn-simular">Ejecutar Simulación</button>
+
+        <div class="resultados">
+            <h3>Logs de Ejecución:</h3>
+            <ul id="log-list"></ul>
+            
+            <h3 class="saldo">Saldo Final: $<span id="saldo-final">0.00</span></h3>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

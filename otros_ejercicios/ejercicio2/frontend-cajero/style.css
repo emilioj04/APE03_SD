@@ -1,0 +1,6 @@
+body { font-family: Arial, sans-serif; background-color: #f4f4f9; padding: 20px; }
+.container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+button { background: #007bff; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 5px; font-size: 16px;}
+button:hover { background: #0056b3; }
+ul { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 5px; list-style-type: none; font-family: monospace;}
+.saldo { color: #333; }

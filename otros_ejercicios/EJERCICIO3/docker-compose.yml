@@ -1,0 +1,27 @@
+name: sd-ejercicio3
+services:
+  almacen:
+    build: ./backend-productor-consumidor/almacen-service
+    image: sd-almacen:1.0
+    ports: ["8080:8080"]
+
+  productor:
+    build: ./backend-productor-consumidor/productor-service
+    image: sd-productor:1.0
+    environment:
+      ALMACEN_URL: http://almacen:8080
+    ports: ["8081:8081"]
+    depends_on: [almacen]
+
+  consumidor:
+    build: ./backend-productor-consumidor/consumidor-service
+    image: sd-consumidor:1.0
+    environment:
+      ALMACEN_URL: http://almacen:8080
+    ports: ["8082:8082"]
+    depends_on: [almacen]
+
+  frontend:            # opcional: solo sirve el index.html
+    image: nginx:alpine
+    volumes: ["./frontend-productor-consumidor:/usr/share/nginx/html:ro"]
+    ports: ["5500:80"]

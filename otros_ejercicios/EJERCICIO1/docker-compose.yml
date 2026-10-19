@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./estacionamiento-backend
+      dockerfile: Dockerfile
+    container_name: backend_estacionamiento
+    ports:
+      - "8080:8080"
+    networks:
+      - red-estacionamiento
+
+  frontend:
+    build:
+      context: ./estacionamiento-frontend
+      dockerfile: Dockerfile
+    container_name: frontend_estacionamiento
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    networks:
+      - red-estacionamiento
+
+networks:
+  red-estacionamiento:
+    driver: bridge
